@@ -6,6 +6,8 @@ const WorldScript = preload("res://scripts/world.gd")
 const LifeformScript = preload("res://scripts/lifeform.gd")
 const LIFE_ATLAS := preload("res://assets/art/alien_life.svg")
 const LAMP_GLOW := preload("res://assets/art/lamp_glow.svg")
+const DRIFTMETAL_ART := preload("res://assets/art/driftmetal.svg")
+const LUMEN_KELP_ART := preload("res://assets/art/lumen_kelp.svg")
 
 const STARTING_OXYGEN := 150.0
 const STARTING_DEPTH_LIMIT := 500.0
@@ -15,8 +17,10 @@ const SUB_DEPTH_LIMIT := 2400.0
 const SAVE_PATH := "user://quiet_trench_save.json"
 const SETTINGS_PATH := "user://quiet_trench_settings.json"
 const SCAN_SECONDS := 0.85
-const ANALYZER_RANGE := 780.0
+const ANALYZER_RANGE := 360.0
 const ANALYZER_HALF_ANGLE := 15.0
+const INVENTORY_SLOT_COUNT := 24
+const QUICK_SLOT_COUNT := 5
 const WORLD_LIMIT_X := 1400.0
 const AUTOSAVE_INTERVALS := [0, 30, 60, 300, 600, 900, 1800]
 const RESOLUTIONS := [
@@ -139,7 +143,8 @@ const SPECIES := [
 		"depth": Vector2(305, 180),
 		"count": 4,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": false,
+		"flora_behavior": "sway"
 	},
 	{
 		"id": "veil_moss",
@@ -151,7 +156,8 @@ const SPECIES := [
 		"depth": Vector2(520, 720),
 		"count": 4,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": false,
+		"flora_behavior": "creep"
 	},
 	{
 		"id": "spire_coral",
@@ -163,7 +169,8 @@ const SPECIES := [
 		"depth": Vector2(675, 1120),
 		"count": 4,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": true,
+		"flora_behavior": "stalk"
 	},
 	{
 		"id": "lantern_bloom",
@@ -175,7 +182,8 @@ const SPECIES := [
 		"depth": Vector2(560, 930),
 		"count": 4,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": false,
+		"flora_behavior": "pulse"
 	}
 ]
 
@@ -218,8 +226,6 @@ var story_message := "The escape pod ruptures against the shore. The ocean is qu
 var status_label: Label
 var prompt_label: Label
 var oxygen_bar: ProgressBar
-var inventory_label: Label
-var objective_label: Label
 var depth_label: Label
 var oxygen_empty_time := 0.0
 var world_tint: CanvasModulate
@@ -228,6 +234,22 @@ var health_bar: ProgressBar
 var scan_label: Label
 var scan_bar: ProgressBar
 var crafting_overlay: ColorRect
+var inventory_overlay: ColorRect
+var inventory_grid: GridContainer
+var inventory_status: Label
+var inventory_tooltip: PanelContainer
+var inventory_tooltip_label: Label
+var inventory_slots: Array[Button] = []
+var inventory_icon_nodes: Array[TextureRect] = []
+var inventory_count_labels: Array[Label] = []
+var inventory_slot_resources: Array[String] = []
+var quick_slot_buttons: Array[Button] = []
+var quick_slot_icons: Array[TextureRect] = []
+var quick_slot_resources: Array[String] = ["", "", "", "", ""]
+var selected_quick_slot := 0
+var inventory_open := false
+var inventory_hovered_resource := ""
+var health_bar_offset := Vector2(0, 24)
 var recipe_list: VBoxContainer
 var recipe_details: Label
 var selected_recipe := ""
@@ -254,7 +276,7 @@ var settings_panel_visible := false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_setup_gameplay_inputs()
 	_load_settings()
 	var world := Node2D.new()
@@ -273,6 +295,7 @@ func _ready() -> void:
 	_create_lifeforms()
 	_load_game()
 	_create_hud()
+	_create_inventory_window()
 	_create_analyzer_beam()
 	_create_crafting_window()
 	_create_pause_menu()
@@ -394,7 +417,7 @@ func _process(delta: float) -> void:
 			continue
 		if diver.global_position.distance_to(lifeform.global_position) < 100.0:
 			health = maxf(0.0, health - 20.0 * delta)
-			story_message = "A Riftstalker is striking! Scan it or escape."
+			story_message = "%s is striking! Scan it or escape." % lifeform.specimen_name
 
 	if oxygen <= 0.0 and diver.global_position.y > 145.0:
 		oxygen_empty_time += delta
@@ -410,14 +433,26 @@ func _process(delta: float) -> void:
 	_update_autosave(delta)
 	_update_analyzer(delta)
 	_refresh_hud()
+	_update_inventory_tooltip_position()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if awaiting_keybinding != "":
 		if event is InputEventKey and event.pressed and not event.echo:
 			_apply_keybinding(event as InputEventKey)
 		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		var key_event := event as InputEventKey
+		if key_event.keycode == KEY_TAB:
+			if inventory_open:
+				_toggle_inventory(false)
+			elif not get_tree().paused:
+				_toggle_inventory(true)
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("pause") and not event.is_echo():
-		if settings_panel_visible:
+		if inventory_open:
+			_toggle_inventory(false)
+		elif settings_panel_visible:
 			_show_settings(false)
 		elif pause_menu_open:
 			_set_pause_menu(false)
@@ -425,6 +460,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_pause_menu(true)
 		get_viewport().set_input_as_handled()
 		return
+	if event is InputEventKey and event.pressed and not event.echo and (
+		not get_tree().paused or inventory_open
+	):
+		var key_event := event as InputEventKey
+		var quick_slot := int(key_event.keycode) - int(KEY_1)
+		if quick_slot >= 0 and quick_slot < QUICK_SLOT_COUNT:
+			_select_quick_slot(quick_slot)
+			get_viewport().set_input_as_handled()
+			return
 	if get_tree().paused:
 		return
 	if event.is_action_pressed("interact") and not event.is_echo():
@@ -473,6 +517,8 @@ func _create_lifeforms() -> void:
 			lifeform.recipe_id = species_data.recipe
 			lifeform.yield_amount = species_data["yield"]
 			lifeform.aggressive = species_data.aggressive
+			lifeform.flora_behavior = species_data.get("flora_behavior", "")
+			lifeform.hunter_target = diver
 			lifeform.sprite_texture = atlas
 			lifeform.lifeform_id = "%s_%d" % [species_data.id, index]
 			var spread := Vector2(
@@ -509,30 +555,32 @@ func _create_hud() -> void:
 	hud_canvas = canvas
 	add_child(canvas)
 
-	var left_panel := PanelContainer.new()
-	left_panel.position = Vector2(22, 20)
-	left_panel.custom_minimum_size = Vector2(330, 0)
-	_style_glass_panel(left_panel, Color(0.20, 0.93, 0.84))
-	canvas.add_child(left_panel)
-
-	var left_column := VBoxContainer.new()
-	left_column.add_theme_constant_override("separation", 8)
-	left_panel.add_child(left_column)
-
-	var title := Label.new()
-	title.text = "THE QUIET TRENCH"
-	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.89))
-	title.add_theme_font_size_override("font_size", 23)
-	left_column.add_child(title)
+	depth_label = Label.new()
+	depth_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	depth_label.offset_top = 12.0
+	depth_label.offset_bottom = 38.0
+	depth_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	depth_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.98))
+	depth_label.add_theme_font_size_override("font_size", 19)
+	canvas.add_child(depth_label)
 
 	var oxygen_caption := Label.new()
+	oxygen_caption.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	oxygen_caption.offset_top = 40.0
+	oxygen_caption.offset_bottom = 58.0
+	oxygen_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	oxygen_caption.text = "OXYGEN"
 	oxygen_caption.add_theme_color_override("font_color", Color(0.60, 0.84, 0.98))
-	oxygen_caption.add_theme_font_size_override("font_size", 13)
-	left_column.add_child(oxygen_caption)
-
+	oxygen_caption.add_theme_font_size_override("font_size", 11)
+	canvas.add_child(oxygen_caption)
 	oxygen_bar = ProgressBar.new()
-	oxygen_bar.custom_minimum_size = Vector2(290, 20)
+	oxygen_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	oxygen_bar.anchor_left = 0.5
+	oxygen_bar.anchor_right = 0.5
+	oxygen_bar.offset_left = -130.0
+	oxygen_bar.offset_right = 130.0
+	oxygen_bar.offset_top = 60.0
+	oxygen_bar.offset_bottom = 72.0
 	oxygen_bar.max_value = STARTING_OXYGEN
 	oxygen_bar.show_percentage = false
 	var oxygen_track := StyleBoxFlat.new()
@@ -543,49 +591,22 @@ func _create_hud() -> void:
 	oxygen_fill_style.bg_color = Color(0.18, 0.92, 0.78)
 	oxygen_fill_style.set_corner_radius_all(9)
 	oxygen_bar.add_theme_stylebox_override("fill", oxygen_fill_style)
-	left_column.add_child(oxygen_bar)
-
-	var health_caption := Label.new()
-	health_caption.text = "VITALS"
-	health_caption.add_theme_color_override("font_color", Color(0.93, 0.65, 0.76))
-	health_caption.add_theme_font_size_override("font_size", 12)
-	left_column.add_child(health_caption)
-
+	canvas.add_child(oxygen_bar)
 	health_bar = ProgressBar.new()
-	health_bar.custom_minimum_size = Vector2(290, 14)
+	health_bar.custom_minimum_size = Vector2(68, 7)
 	health_bar.max_value = 100.0
 	health_bar.show_percentage = false
 	var health_track := StyleBoxFlat.new()
 	health_track.bg_color = Color(0.12, 0.035, 0.1, 0.95)
-	health_track.set_corner_radius_all(8)
+	health_track.set_corner_radius_all(4)
 	health_bar.add_theme_stylebox_override("background", health_track)
 	var health_fill := StyleBoxFlat.new()
 	health_fill.bg_color = Color(1.0, 0.36, 0.57)
-	health_fill.set_corner_radius_all(7)
+	health_fill.set_corner_radius_all(4)
 	health_bar.add_theme_stylebox_override("fill", health_fill)
-	left_column.add_child(health_bar)
-
-	inventory_label = Label.new()
-	inventory_label.add_theme_color_override("font_color", Color(0.91, 0.98, 0.94))
-	inventory_label.add_theme_font_size_override("font_size", 14)
-	left_column.add_child(inventory_label)
-
-	objective_label = Label.new()
-	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	objective_label.add_theme_color_override("font_color", Color(1.0, 0.79, 0.48))
-	objective_label.add_theme_font_size_override("font_size", 14)
-	left_column.add_child(objective_label)
-
-	depth_label = Label.new()
-	depth_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	depth_label.offset_left = 450.0
-	depth_label.offset_right = -450.0
-	depth_label.offset_top = 18.0
-	depth_label.offset_bottom = 52.0
-	depth_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	depth_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.98))
-	depth_label.add_theme_font_size_override("font_size", 19)
-	canvas.add_child(depth_label)
+	health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	canvas.add_child(health_bar)
+	_create_quick_slots(canvas)
 
 	var radio_control := Button.new()
 	radio_control.text = "RADIO"
@@ -612,7 +633,7 @@ func _create_hud() -> void:
 	var prompt_panel := PanelContainer.new()
 	prompt_panel.custom_minimum_size = Vector2(570, 56)
 	prompt_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	prompt_panel.position = Vector2(-285, -80)
+	prompt_panel.position = Vector2(-285, -142)
 	_style_glass_panel(prompt_panel, Color(0.40, 1.0, 0.83))
 	canvas.add_child(prompt_panel)
 
@@ -626,7 +647,7 @@ func _create_hud() -> void:
 	var scan_panel := PanelContainer.new()
 	scan_panel.custom_minimum_size = Vector2(300, 52)
 	scan_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	scan_panel.position = Vector2(-150, -145)
+	scan_panel.position = Vector2(-150, -202)
 	_style_glass_panel(scan_panel, Color(0.40, 1.0, 0.83))
 	canvas.add_child(scan_panel)
 
@@ -652,6 +673,318 @@ func _create_hud() -> void:
 	scan_fill.set_corner_radius_all(4)
 	scan_bar.add_theme_stylebox_override("fill", scan_fill)
 	scan_column.add_child(scan_bar)
+
+func _create_quick_slots(canvas: CanvasLayer) -> void:
+	var quick_bar := PanelContainer.new()
+	quick_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	quick_bar.position = Vector2(-166.0, -68.0)
+	_style_glass_panel(quick_bar, Color(0.40, 1.0, 0.83))
+	canvas.add_child(quick_bar)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	quick_bar.add_child(row)
+	for index in range(QUICK_SLOT_COUNT):
+		var slot := Button.new()
+		slot.custom_minimum_size = Vector2(52.0, 52.0)
+		slot.tooltip_text = "Quick slot %d" % (index + 1)
+		slot.pressed.connect(_select_quick_slot.bind(index))
+		row.add_child(slot)
+		quick_slot_buttons.append(slot)
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(34.0, 34.0)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		icon.position = Vector2(-17.0, -17.0)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		quick_slot_icons.append(icon)
+		var hotkey := Label.new()
+		hotkey.text = str(index + 1)
+		hotkey.position = Vector2(3.0, 1.0)
+		hotkey.add_theme_font_size_override("font_size", 10)
+		hotkey.add_theme_color_override("font_color", Color(0.72, 0.96, 0.90))
+		hotkey.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(hotkey)
+	_refresh_quick_slots()
+
+func _create_inventory_window() -> void:
+	inventory_overlay = ColorRect.new()
+	inventory_overlay.color = Color(0.005, 0.025, 0.065, 0.82)
+	inventory_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	inventory_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	inventory_overlay.visible = false
+	inventory_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	hud_canvas.add_child(inventory_overlay)
+
+	var panel := PanelContainer.new()
+	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	panel.offset_left = -300.0
+	panel.offset_right = 300.0
+	panel.offset_top = -255.0
+	panel.offset_bottom = 255.0
+	_style_glass_panel(panel, Color(0.40, 1.0, 0.83))
+	inventory_overlay.add_child(panel)
+
+	var layout := VBoxContainer.new()
+	layout.add_theme_constant_override("separation", 12)
+	panel.add_child(layout)
+
+	var heading := HBoxContainer.new()
+	layout.add_child(heading)
+	var title := Label.new()
+	title.text = "DIVE INVENTORY"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.89))
+	heading.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "CLOSE  [TAB]"
+	close_button.pressed.connect(_toggle_inventory.bind(false))
+	heading.add_child(close_button)
+
+	var subtitle := Label.new()
+	subtitle.text = "Recovered materials and samples"
+	subtitle.add_theme_color_override("font_color", Color(0.70, 0.85, 0.91))
+	layout.add_child(subtitle)
+
+	inventory_grid = GridContainer.new()
+	inventory_grid.columns = 6
+	inventory_grid.add_theme_constant_override("h_separation", 8)
+	inventory_grid.add_theme_constant_override("v_separation", 8)
+	layout.add_child(inventory_grid)
+
+	for index in range(INVENTORY_SLOT_COUNT):
+		var slot := Button.new()
+		slot.custom_minimum_size = Vector2(76.0, 76.0)
+		slot.mouse_entered.connect(_on_inventory_slot_hover.bind(index))
+		slot.mouse_exited.connect(_clear_inventory_tooltip)
+		slot.pressed.connect(_pin_inventory_item.bind(index))
+		inventory_grid.add_child(slot)
+		inventory_slots.append(slot)
+		var icon := TextureRect.new()
+		icon.custom_minimum_size = Vector2(46.0, 46.0)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		icon.position = Vector2(-23.0, -25.0)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(icon)
+		inventory_icon_nodes.append(icon)
+		var amount := Label.new()
+		amount.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		amount.offset_left = -30.0
+		amount.offset_top = -20.0
+		amount.offset_right = -4.0
+		amount.offset_bottom = -2.0
+		amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		amount.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+		amount.add_theme_font_size_override("font_size", 13)
+		amount.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_child(amount)
+		inventory_count_labels.append(amount)
+
+	inventory_status = Label.new()
+	inventory_status.text = "Hover a sample to inspect it; click one to pin it to the selected quick slot."
+	inventory_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory_status.custom_minimum_size.y = 32.0
+	inventory_status.add_theme_color_override("font_color", Color(0.81, 0.91, 0.95))
+	layout.add_child(inventory_status)
+
+	inventory_tooltip = PanelContainer.new()
+	inventory_tooltip.visible = false
+	inventory_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inventory_tooltip.z_index = 30
+	_style_glass_panel(inventory_tooltip, Color(0.73, 0.91, 1.0))
+	hud_canvas.add_child(inventory_tooltip)
+	inventory_tooltip_label = Label.new()
+	inventory_tooltip_label.custom_minimum_size = Vector2(220.0, 0.0)
+	inventory_tooltip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	inventory_tooltip_label.add_theme_color_override("font_color", Color(0.88, 0.96, 1.0))
+	inventory_tooltip.add_child(inventory_tooltip_label)
+	inventory_slot_resources.resize(INVENTORY_SLOT_COUNT)
+	inventory_slot_resources.fill("")
+	_refresh_inventory_window()
+
+func _toggle_inventory(open: bool) -> void:
+	if open:
+		crafting_overlay.visible = false
+		radio_panel.visible = false
+		pause_menu_open = false
+		pause_overlay.visible = false
+	inventory_open = open
+	inventory_overlay.visible = open
+	inventory_tooltip.visible = false
+	get_tree().paused = open
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if open:
+		_refresh_inventory_window()
+	else:
+		inventory_hovered_resource = ""
+		_clear_analyzer_beam()
+	_refresh_hud()
+
+func _refresh_inventory_window() -> void:
+	if inventory_slots.is_empty():
+		return
+	inventory_slot_resources.fill("")
+	var slot_index := 0
+	for resource_id in inventory:
+		var quantity := int(inventory[resource_id])
+		if quantity <= 0 or slot_index >= INVENTORY_SLOT_COUNT:
+			continue
+		inventory_slot_resources[slot_index] = resource_id
+		inventory_icon_nodes[slot_index].texture = _resource_icon(resource_id)
+		inventory_count_labels[slot_index].text = str(quantity)
+		inventory_slots[slot_index].tooltip_text = _resource_name(resource_id)
+		slot_index += 1
+	for index in range(slot_index, INVENTORY_SLOT_COUNT):
+		inventory_icon_nodes[index].texture = null
+		inventory_count_labels[index].text = ""
+		inventory_slots[index].tooltip_text = "Empty"
+	_refresh_quick_slots()
+
+func _resource_icon(resource_id: String) -> Texture2D:
+	if resource_id == "driftmetal":
+		return DRIFTMETAL_ART
+	if resource_id == "lumen_kelp":
+		return LUMEN_KELP_ART
+	for species_data in SPECIES:
+		if species_data.resource == resource_id:
+			var atlas := AtlasTexture.new()
+			atlas.atlas = LIFE_ATLAS
+			atlas.region = species_data.region
+			return atlas
+	return null
+
+func _on_inventory_slot_hover(index: int) -> void:
+	var resource_id := inventory_slot_resources[index]
+	inventory_hovered_resource = resource_id
+	if resource_id.is_empty():
+		inventory_tooltip.visible = false
+		return
+	inventory_tooltip_label.text = _inventory_item_details(resource_id)
+	inventory_tooltip.visible = true
+	call_deferred("_update_inventory_tooltip_position")
+
+func _clear_inventory_tooltip() -> void:
+	inventory_hovered_resource = ""
+	if inventory_tooltip != null:
+		inventory_tooltip.visible = false
+
+func _update_inventory_tooltip_position() -> void:
+	if not inventory_tooltip.visible:
+		return
+	var viewport_size := get_viewport_rect().size
+	var tooltip_size := inventory_tooltip.size
+	var tooltip_position := get_viewport().get_mouse_position() + Vector2(18.0, 18.0)
+	tooltip_position.x = minf(tooltip_position.x, viewport_size.x - tooltip_size.x - 8.0)
+	tooltip_position.y = minf(tooltip_position.y, viewport_size.y - tooltip_size.y - 8.0)
+	inventory_tooltip.position = tooltip_position
+
+func _inventory_item_details(resource_id: String) -> String:
+	if resource_id == "driftmetal":
+		return "DRIFTMETAL\nCOMMON SALVAGE\nRich in conductive metals; useful for pressure-safe equipment."
+	if resource_id == "lumen_kelp":
+		return "LUMEN KELP\nCOMMON FLORA\nA faintly glowing, flexible fiber used in surface technology."
+	for species_data in SPECIES:
+		if species_data.resource != resource_id:
+			continue
+		if not _resource_source_scanned(resource_id):
+			return "%s\nUNANALYZED SAMPLE\nScan a living specimen to reveal its traits." % _resource_name(resource_id).to_upper()
+		var temperament := "Aggressive hunter" if species_data.aggressive else "Non-aggressive"
+		var rarity := _resource_rarity(resource_id)
+		var behavior := _flora_behavior_description(species_data) if species_data.kind == "flora" else "Drifts through the water column."
+		return "%s\n%s  •  %s\n%s\n%s" % [
+			species_data.name.to_upper(),
+			rarity,
+			temperament.to_upper(),
+			behavior,
+			"Sample source: %s." % _resource_name(resource_id)
+		]
+	return "%s\nRECOVERED MATERIAL\nThe sample's composition has not been catalogued." % _resource_name(resource_id).to_upper()
+
+func _resource_source_scanned(resource_id: String) -> bool:
+	for lifeform in lifeforms:
+		if lifeform.resource_id == resource_id and lifeform.scanned:
+			return true
+	return false
+
+func _resource_rarity(resource_id: String) -> String:
+	match resource_id:
+		"moon_mucus", "ribbon_silk", "ember_kelp", "veil_moss":
+			return "UNCOMMON"
+		"shell_plate", "electric_filament", "spire_coral", "abyssal_bloom":
+			return "RARE"
+		_:
+			return "COMMON"
+
+func _flora_behavior_description(species_data: Dictionary) -> String:
+	match String(species_data.get("flora_behavior", "")):
+		"sway":
+			return "Sways with the current and releases warm spores."
+		"creep":
+			return "Slowly creeps along the rock, filtering the water."
+		"stalk":
+			return "A hunting coral that stalks nearby movement."
+		"pulse":
+			return "Pulses with light to attract small drifting organisms."
+		_:
+			return "Rooted alien flora."
+
+func _pin_inventory_item(index: int) -> void:
+	var resource_id := inventory_slot_resources[index]
+	if resource_id.is_empty():
+		return
+	quick_slot_resources[selected_quick_slot] = resource_id
+	inventory_status.text = "%s pinned to quick slot %d." % [
+		_resource_name(resource_id),
+		selected_quick_slot + 1
+	]
+	_refresh_quick_slots()
+
+func _select_quick_slot(index: int) -> void:
+	selected_quick_slot = index
+	_refresh_quick_slots()
+
+func _refresh_quick_slots() -> void:
+	if quick_slot_buttons.is_empty():
+		return
+	for index in range(QUICK_SLOT_COUNT):
+		var resource_id := quick_slot_resources[index]
+		if not resource_id.is_empty() and int(inventory.get(resource_id, 0)) <= 0:
+			quick_slot_resources[index] = ""
+			resource_id = ""
+		quick_slot_icons[index].texture = (
+			_resource_icon(resource_id) if not resource_id.is_empty() else null
+		)
+		quick_slot_buttons[index].modulate = (
+			Color(1.0, 1.0, 1.0)
+			if index == selected_quick_slot
+			else Color(0.65, 0.75, 0.82)
+		)
+		quick_slot_buttons[index].tooltip_text = (
+			"%d — %s" % [index + 1, _resource_name(resource_id)]
+			if not resource_id.is_empty()
+			else "Quick slot %d — empty" % (index + 1)
+		)
+	for resource_id in inventory:
+		if int(inventory[resource_id]) <= 0 or quick_slot_resources.has(resource_id):
+			continue
+		var empty_index := quick_slot_resources.find("")
+		if empty_index < 0:
+			break
+		quick_slot_resources[empty_index] = resource_id
+		quick_slot_icons[empty_index].texture = _resource_icon(resource_id)
+		quick_slot_buttons[empty_index].tooltip_text = "%d — %s" % [
+			empty_index + 1,
+			_resource_name(resource_id)
+		]
+		quick_slot_buttons[empty_index].modulate = (
+			Color(1.0, 1.0, 1.0)
+			if empty_index == selected_quick_slot
+			else Color(0.65, 0.75, 0.82)
+		)
 
 func _create_crafting_window() -> void:
 	crafting_overlay = ColorRect.new()
@@ -921,7 +1254,7 @@ func _set_pause_menu(open: bool) -> void:
 		awaiting_keybinding = ""
 		pause_overlay.visible = false
 	get_tree().paused = open
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if open else Input.MOUSE_MODE_HIDDEN
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_refresh_hud()
 
 func _show_pause_menu() -> void:
@@ -1181,25 +1514,6 @@ func _resource_name(resource_id: String) -> String:
 	}
 	return names.get(resource_id, resource_id)
 
-func _inventory_summary() -> String:
-	return (
-		"SALVAGE\n"
-		+ "Driftmetal %d   Lumen kelp %d   Ember kelp %d\n"
-		+ "Moon mucus %d   Ribbon silk %d   Veil moss %d\n"
-		+ "Shell plate %d   Spire coral %d   Bloom %d   Filament %d"
-	) % [
-		inventory["driftmetal"],
-		inventory["lumen_kelp"],
-		inventory["ember_kelp"],
-		inventory["moon_mucus"],
-		inventory["ribbon_silk"],
-		inventory["veil_moss"],
-		inventory["shell_plate"],
-		inventory["spire_coral"],
-		inventory["abyssal_bloom"],
-		inventory["electric_filament"]
-	]
-
 func _apply_installed_techs() -> void:
 	suit_upgraded = installed_techs.has("pressure_weave")
 	depth_limit = STARTING_DEPTH_LIMIT
@@ -1270,12 +1584,9 @@ func _refresh_hud() -> void:
 		else Color(0.18, 0.92, 0.78)
 	)
 	health_bar.value = health
-	inventory_label.text = _inventory_summary()
-	objective_label.text = (
-		"Signal recovered. The trench predates the ocean. More answers lie below."
-		if signal_found
-		else "Find samples, scan alien life, and press F to inspect technologies."
-	)
+	var player_screen_position := get_viewport().get_canvas_transform() * diver.global_position
+	health_bar.position = player_screen_position + Vector2(-34.0, health_bar_offset.y)
+	_refresh_quick_slots()
 	status_label.text = story_message
 
 	var nearby := _nearest_interactable()
@@ -1296,7 +1607,7 @@ func _refresh_hud() -> void:
 	else:
 		prompt_label.text = ""
 	prompt_label.get_parent().visible = not prompt_label.text.is_empty()
-	if crafting_overlay.visible:
+	if crafting_overlay.visible or inventory_open:
 		prompt_label.get_parent().visible = false
 
 func _create_analyzer_beam() -> void:
@@ -1317,7 +1628,7 @@ func _create_analyzer_beam() -> void:
 	analyzer_beam = analyzer_edges
 
 func _update_analyzer(delta: float) -> void:
-	if crafting_overlay.visible:
+	if crafting_overlay.visible or inventory_open:
 		_clear_analyzer_beam()
 		scan_target = null
 		scan_progress = 0.0
@@ -1425,7 +1736,7 @@ func _target_in_cone(start: Vector2, direction: Vector2, require_unscanned := tr
 		var distance := offset.length()
 		var angle := absf(direction.angle_to(offset.normalized()))
 		if (
-			distance <= ANALYZER_RANGE + 78.0
+			distance <= ANALYZER_RANGE
 			and angle <= deg_to_rad(ANALYZER_HALF_ANGLE) + 0.035
 		):
 			var score := distance * cos(angle)

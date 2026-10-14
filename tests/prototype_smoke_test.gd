@@ -29,9 +29,46 @@ func _run() -> void:
 	_expect(game.pickups.size() == 10, "The world contains salvage and a story pickup.")
 	_expect(game.analyzer_beam != null, "The analyzer has an aiming beam.")
 	_expect(game.ANALYZER_HALF_ANGLE * 2.0 == 30.0, "The analyzer beam covers a 30-degree cone.")
-	_expect(is_equal_approx(game.ANALYZER_RANGE, 780.0), "The analyzer beam has a finite 780-unit reach.")
+	_expect(is_equal_approx(game.ANALYZER_RANGE, 360.0), "The analyzer beam has a short, finite 360-unit reach.")
 	_expect(game.diver.HORIZONTAL_LIMIT >= 1400.0, "The diver can explore the expanded horizontal world.")
 	_expect(game.health == 100.0, "The diver starts with 100 health.")
+	_expect(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "The mouse cursor remains visible while playing.")
+	_expect(game.quick_slot_buttons.size() == 5, "Five quick slots are visible in the bottom-center HUD.")
+	_expect(
+		is_equal_approx(game.oxygen_bar.offset_top, 60.0)
+		and is_equal_approx(game.depth_label.offset_top, 12.0),
+		"The oxygen meter sits directly beneath the centered depth display."
+	)
+	_expect(
+		game.health_bar.custom_minimum_size == Vector2(68.0, 7.0),
+		"The compact health meter follows beneath the diver."
+	)
+	var hud_labels: Array[Node] = game.hud_canvas.find_children("*", "Label", true, false)
+	var has_title_panel := false
+	for hud_label in hud_labels:
+		if (hud_label as Label).text.contains("THE QUIET TRENCH"):
+			has_title_panel = true
+	_expect(not has_title_panel, "The Quiet Trench information panel is absent from the HUD.")
+	_expect(
+		game._inventory_item_details("moon_mucus").contains("UNANALYZED"),
+		"Unscanned sample characteristics remain hidden."
+	)
+	var tab_event := InputEventKey.new()
+	tab_event.pressed = true
+	tab_event.keycode = KEY_TAB
+	tab_event.physical_keycode = KEY_TAB
+	game._unhandled_input(tab_event)
+	_expect(
+		game.inventory_open and game.inventory_overlay.visible and game.get_tree().paused,
+		"Tab opens the inventory and pauses the dive."
+	)
+	_expect(
+		game.inventory_slots.size() == game.INVENTORY_SLOT_COUNT
+		and game.inventory_icon_nodes[0].texture == null,
+		"The inventory displays a grid of empty item squares."
+	)
+	game._unhandled_input(tab_event)
+	_expect(not game.inventory_open and not game.get_tree().paused, "Tab closes the inventory.")
 	_expect(not game.radio_panel.visible, "The last radio message is hidden until the radio is opened.")
 	game._toggle_radio()
 	_expect(game.radio_panel.visible, "The radio button reveals the latest message.")
@@ -69,6 +106,11 @@ func _run() -> void:
 	_expect(moon_jelly.scanned, "Holding a stable analyzer lock completes a scan.")
 	_expect(game.unlocked_recipes.has("deep_tank"), "Scanning reveals the Moon-jelly tank technology.")
 	_expect(
+		game._inventory_item_details("moon_mucus").contains("UNCOMMON")
+		and game._inventory_item_details("moon_mucus").contains("NON-AGGRESSIVE"),
+		"Scanning reveals a sample's rarity and temperament."
+	)
+	_expect(
 		game._recipe_detail_text("deep_tank").begins_with("MISSING:")
 		and not game._has_recipe_materials(game.RECIPES.deep_tank),
 		"Known but uncraftable technology reports its missing materials."
@@ -90,10 +132,10 @@ func _run() -> void:
 		game._target_in_cone(cone_origin, Vector2.RIGHT) == null,
 		"A lifeform outside the analyzer cone is not targetable."
 	)
-	moon_jelly.global_position = cone_origin + Vector2(game.ANALYZER_RANGE + 100.0, 0.0)
+	moon_jelly.global_position = cone_origin + Vector2(game.ANALYZER_RANGE + 20.0, 0.0)
 	_expect(
 		game._target_in_cone(cone_origin, Vector2.RIGHT) == null,
-		"A lifeform beyond analyzer reach is not targetable."
+		"A lifeform just beyond analyzer reach is not targetable."
 	)
 	for index in range(game.lifeforms.size()):
 		game.lifeforms[index].harvested = stored_harvested[index]
@@ -124,6 +166,18 @@ func _run() -> void:
 	_expect(game.inventory["veil_moss"] == 4, "Veil moss produces its recipe ingredient.")
 	_expect(game.inventory["spire_coral"] == 4, "Spire coral produces its recipe ingredient.")
 	_expect(game.inventory["abyssal_bloom"] == 4, "Lantern blooms produce their recipe ingredient.")
+	var hunting_coral: AlienLifeform = _first_lifeform(game, "spire_coral")
+	hunting_coral.global_position = game.diver.global_position + Vector2(300.0, 0.0)
+	hunting_coral.home_position = hunting_coral.position
+	hunting_coral.harvested = false
+	var distance_before_hunt := hunting_coral.global_position.distance_to(game.diver.global_position)
+	hunting_coral._process(0.5)
+	_expect(
+		hunting_coral.aggressive
+		and hunting_coral.global_position.distance_to(game.diver.global_position) < distance_before_hunt,
+		"An aggressive alien flora species actively stalks the diver."
+	)
+	hunting_coral.harvested = true
 
 	_collect(game, "metal_a")
 	_collect(game, "metal_b")
@@ -131,6 +185,26 @@ func _run() -> void:
 	_collect(game, "kelp_a")
 	_expect(game.inventory["driftmetal"] == 3, "Salvage collection adds Driftmetal.")
 	_expect(game.inventory["lumen_kelp"] == 1, "Salvage collection adds Lumen kelp.")
+	game._toggle_inventory(true)
+	_expect(
+		game.inventory_icon_nodes[0].texture != null
+		and game.inventory_count_labels[0].text == "3"
+		and game.inventory_icon_nodes[1].texture != null,
+		"Collected materials show illustrated emblems and stack counts in the inventory grid."
+	)
+	game._on_inventory_slot_hover(0)
+	_expect(
+		game.inventory_tooltip.visible
+		and game.inventory_tooltip_label.text.contains("conductive metals"),
+		"Hovering a recovered mineral reveals its characteristics."
+	)
+	game._pin_inventory_item(1)
+	_expect(
+		game.quick_slot_resources[0] == "lumen_kelp"
+		and game.quick_slot_icons[0].texture != null,
+		"Inventory items can be pinned to an illustrated quick slot."
+	)
+	game._toggle_inventory(false)
 	game._toggle_crafting_window(true)
 	_expect(game.crafting_overlay.visible, "F opens the technology bench.")
 	game._craft_recipe("pressure_weave")

@@ -23,14 +23,18 @@ In VS Code, open **Terminal → Run Task...** and select **Godot: Launch game** 
 - **E** — collect salvage or sample nearby alien life
 - **F** — open or close the field technology bench
 - **Esc** — pause and open the game menu
-- **Mouse** — aim the analyzer beam
-- **Hold left mouse button** — scan an unstudied creature or plant within the analyzer's 30° cone (780-unit reach)
+- **Mouse** — aim the analyzer beam (the cursor stays visible)
+- **Hold left mouse button** — scan an unstudied creature or plant within the analyzer's 30° cone (360-unit reach)
 - **Right mouse button** — fire the Dreamspore dart at a hostile target in range
+- **Tab** — open or close the item-grid inventory; selecting an item pins it to the active quick slot
+- **1–5** — select a bottom-center quick slot
 - **Radio** — open the latest radio message; story messages stay hidden until requested
 
 Return to the escape pod near the surface to refill oxygen and restore health. Begin by collecting three Driftmetal and one Lumen kelp to fabricate the known Pressure-weave suit. Scan each alien species to reveal its linked technology; sampled fauna and flora provide the recipe materials. The bench lists all technologies and shows which are unknown, short on materials, ready, or already built.
 
-Progression includes pressure protection, a larger scrubber tank, speed fins, a lamp, a visible pocket submersible, a tranquilizer, and consumable repair gel. Each upgrade opens up more of the trench and the story behind the signal.
+Progression includes pressure protection, a larger scrubber tank, speed fins, a lamp, a visible pocket submersible, a tranquilizer, and consumable repair gel. Each upgrade opens up more of the trench and the story behind the signal. The inventory shows collected materials with illustrated icons and stack counts; hover over samples to inspect analyzed traits, rarity, and temperament. Unscanned organic samples keep their characteristics hidden. Quick slots mirror held materials and can be pinned from the inventory.
+
+Alien flora has distinct motion: some sway, creep along surfaces, or pulse to attract small organisms. Spire coral is an aggressive hunter that stalks nearby divers; the other listed flora is non-aggressive.
 
 Undiscovered technologies do not reveal their names, scan targets, or recipes. Finding a recipe ingredient reveals only that known component; scanning the associated lifeform identifies the full technology. Unknown items are shown in grey and known recipes missing materials are highlighted red.
 
