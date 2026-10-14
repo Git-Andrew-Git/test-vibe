@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="190" viewBox="0 0 160 190">
+  <defs>
+    <linearGradient id="helmet" x2="0" y2="1">
+      <stop stop-color="#effff0"/>
+      <stop offset=".38" stop-color="#76e7e3"/>
+      <stop offset="1" stop-color="#287ca3"/>
+    </linearGradient>
+  </defs>
+  <path d="M55 77q-4-61 26-66 45-2 46 66l-10 18q-9 12-27 14-24-1-33-17Z" fill="url(#helmet)" fill-opacity=".9" stroke="#effff0" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M62 48q28-17 55 0l-4 25q-20 18-47 0Z" fill="#123c63" fill-opacity=".92" stroke="#d9fff1" stroke-width="4"/>
+  <path d="M72 52q15-7 31-2L78 67q-7 3-8-4Z" fill="#84f5ec"/>
+  <circle cx="105" cy="62" r="4" fill="#fff5c9"/>
+  <path d="M69 86q13 11 28 8" fill="none" stroke="#fff7d6" stroke-width="4" stroke-linecap="round"/>
+</svg>

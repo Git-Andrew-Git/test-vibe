@@ -8,6 +8,9 @@ const LIFE_ATLAS := preload("res://assets/art/alien_life.svg")
 const LAMP_GLOW := preload("res://assets/art/lamp_glow.svg")
 const DRIFTMETAL_ART := preload("res://assets/art/driftmetal.svg")
 const LUMEN_KELP_ART := preload("res://assets/art/lumen_kelp.svg")
+const MENU_OCEAN_ART := preload("res://assets/art/menu_ocean.svg")
+const RADIO_ART := preload("res://assets/art/radio_icon.svg")
+const TECHNOLOGY_ICONS := preload("res://assets/art/technology_icons.svg")
 
 const STARTING_OXYGEN := 150.0
 const STARTING_DEPTH_LIMIT := 500.0
@@ -17,10 +20,19 @@ const SUB_DEPTH_LIMIT := 2400.0
 const SAVE_PATH := "user://quiet_trench_save.json"
 const SETTINGS_PATH := "user://quiet_trench_settings.json"
 const SCAN_SECONDS := 0.85
-const ANALYZER_RANGE := 360.0
+const ANALYZER_RANGE := 180.0
 const ANALYZER_HALF_ANGLE := 15.0
 const INVENTORY_SLOT_COUNT := 24
 const QUICK_SLOT_COUNT := 5
+const TECHNOLOGY_ICON_REGIONS := {
+	"pressure_weave": Rect2i(0, 0, 128, 128),
+	"deep_tank": Rect2i(128, 0, 128, 128),
+	"fins": Rect2i(256, 0, 128, 128),
+	"lamp": Rect2i(384, 0, 128, 128),
+	"submersible": Rect2i(512, 0, 128, 128),
+	"tranquilizer": Rect2i(640, 0, 128, 128),
+	"medkit": Rect2i(768, 0, 128, 128)
+}
 const WORLD_LIMIT_X := 1400.0
 const AUTOSAVE_INTERVALS := [0, 30, 60, 300, 600, 900, 1800]
 const RESOLUTIONS := [
@@ -189,6 +201,7 @@ const SPECIES := [
 
 var save_path := SAVE_PATH
 var settings_path := SETTINGS_PATH
+var ocean_world: OceanWorld
 var diver: OceanDiver
 var pickups: Array[SalvagePickup] = []
 var lifeforms: Array[AlienLifeform] = []
@@ -213,10 +226,8 @@ var depth_limit := STARTING_DEPTH_LIMIT
 var health := 100.0
 var scan_target: AlienLifeform
 var scan_progress := 0.0
-var analyzer_beam: Line2D
-var analyzer_cone: Polygon2D
-var analyzer_arc: Line2D
-var analyzer_edges: Line2D
+var analyzer_beam: MeshInstance2D
+var analyzer_mesh: ArrayMesh
 var scan_cooldown := 0.0
 var dart_cooldown := 0.0
 var suit_upgraded := false
@@ -231,8 +242,12 @@ var oxygen_empty_time := 0.0
 var world_tint: CanvasModulate
 var oxygen_fill_style: StyleBoxFlat
 var health_bar: ProgressBar
+var weather_label: Label
 var scan_label: Label
 var scan_bar: ProgressBar
+var hint_panels: Array[Control] = []
+var prompt_panel: PanelContainer
+var scan_panel: PanelContainer
 var crafting_overlay: ColorRect
 var inventory_overlay: ColorRect
 var inventory_grid: GridContainer
@@ -249,7 +264,7 @@ var quick_slot_resources: Array[String] = ["", "", "", "", ""]
 var selected_quick_slot := 0
 var inventory_open := false
 var inventory_hovered_resource := ""
-var health_bar_offset := Vector2(0, 24)
+var health_bar_offset := Vector2(0, 40)
 var recipe_list: VBoxContainer
 var recipe_details: Label
 var selected_recipe := ""
@@ -267,7 +282,9 @@ var confirm_exit_dialog: ConfirmationDialog
 var settings_data := {
 	"resolution": Vector2i(1280, 720),
 	"master_volume": 1.0,
-	"autosave_interval": 60
+	"autosave_interval": 60,
+	"fullscreen": false,
+	"show_gameplay_hints": false
 }
 var autosave_elapsed := 0.0
 var awaiting_keybinding := ""
@@ -279,15 +296,15 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_setup_gameplay_inputs()
 	_load_settings()
-	var world := Node2D.new()
-	world.set_script(WorldScript)
+	var world: OceanWorld = WorldScript.new()
 	world.z_index = -10
 	add_child(world)
+	ocean_world = world
 	_create_atmosphere()
 
 	diver = DiverScript.new()
 	diver.name = "Diver"
-	diver.position = Vector2(35, 90)
+	diver.position = Vector2(35, -70)
 	diver.z_index = 4
 	add_child(diver)
 
@@ -358,11 +375,24 @@ func _load_settings() -> void:
 	var autosave_interval := int(parsed.get("autosave_interval", 60))
 	if autosave_interval in AUTOSAVE_INTERVALS:
 		settings_data["autosave_interval"] = autosave_interval
+	settings_data["fullscreen"] = bool(parsed.get("fullscreen", false))
+	settings_data["show_gameplay_hints"] = bool(parsed.get("show_gameplay_hints", false))
 	_apply_settings()
 
 func _apply_settings() -> void:
 	var resolution: Vector2i = settings_data["resolution"]
-	DisplayServer.window_set_size(resolution)
+	if bool(settings_data["fullscreen"]):
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		DisplayServer.window_set_size(resolution)
+		var screen_size := DisplayServer.screen_get_size()
+		DisplayServer.window_set_position(
+			Vector2i(
+				maxi(0, int(floor(float(screen_size.x - resolution.x) / 2.0))),
+				maxi(0, int(floor(float(screen_size.y - resolution.y) / 2.0)))
+			)
+		)
 	var master_bus := AudioServer.get_bus_index("Master")
 	if master_bus >= 0:
 		AudioServer.set_bus_volume_linear(master_bus, float(settings_data["master_volume"]))
@@ -405,7 +435,13 @@ func _process(delta: float) -> void:
 		return
 	var depth := maxf(0.0, diver.global_position.y - 77.0)
 	var depth_ratio := clampf(depth / float(SUB_DEPTH_LIMIT), 0.0, 1.0)
-	world_tint.color = Color.WHITE.lerp(Color(0.18, 0.29, 0.48), depth_ratio * 0.74)
+	var depth_tint := Color.WHITE.lerp(Color(0.18, 0.29, 0.48), depth_ratio * 0.74)
+	world_tint.color = depth_tint.lerp(ocean_world.ambient_tint, 0.10)
+	weather_label.text = "%s  ·  %s" % [
+		"DAY" if ocean_world.daylight >= 0.5 else "NIGHT",
+		ocean_world.weather
+	]
+	weather_label.modulate = Color(0.72, 0.89, 0.95, 0.55) if ocean_world.weather == "MIST" else Color.WHITE
 	if diver.global_position.y <= 145.0:
 		oxygen = minf(oxygen_capacity, oxygen + 34.0 * delta)
 		oxygen_empty_time = 0.0
@@ -592,6 +628,11 @@ func _create_hud() -> void:
 	oxygen_fill_style.set_corner_radius_all(9)
 	oxygen_bar.add_theme_stylebox_override("fill", oxygen_fill_style)
 	canvas.add_child(oxygen_bar)
+	weather_label = Label.new()
+	weather_label.position = Vector2(22.0, 22.0)
+	weather_label.add_theme_color_override("font_color", Color(0.79, 0.94, 0.95))
+	weather_label.add_theme_font_size_override("font_size", 13)
+	canvas.add_child(weather_label)
 	health_bar = ProgressBar.new()
 	health_bar.custom_minimum_size = Vector2(68, 7)
 	health_bar.max_value = 100.0
@@ -610,8 +651,10 @@ func _create_hud() -> void:
 
 	var radio_control := Button.new()
 	radio_control.text = "RADIO"
+	radio_control.icon = RADIO_ART
+	radio_control.expand_icon = true
 	radio_control.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	radio_control.offset_left = -205.0
+	radio_control.offset_left = -204.0
 	radio_control.offset_right = -112.0
 	radio_control.offset_top = 20.0
 	radio_control.offset_bottom = 62.0
@@ -621,7 +664,7 @@ func _create_hud() -> void:
 	canvas.add_child(radio_control)
 
 	var menu_button := Button.new()
-	menu_button.text = "MENU  [ESC]"
+	menu_button.text = "MENU"
 	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	menu_button.offset_left = -106.0
 	menu_button.offset_right = -20.0
@@ -630,12 +673,13 @@ func _create_hud() -> void:
 	menu_button.pressed.connect(_set_pause_menu.bind(true))
 	canvas.add_child(menu_button)
 
-	var prompt_panel := PanelContainer.new()
+	prompt_panel = PanelContainer.new()
 	prompt_panel.custom_minimum_size = Vector2(570, 56)
 	prompt_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	prompt_panel.position = Vector2(-285, -142)
 	_style_glass_panel(prompt_panel, Color(0.40, 1.0, 0.83))
 	canvas.add_child(prompt_panel)
+	hint_panels.append(prompt_panel)
 
 	prompt_label = Label.new()
 	prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -644,12 +688,13 @@ func _create_hud() -> void:
 	prompt_label.add_theme_font_size_override("font_size", 17)
 	prompt_panel.add_child(prompt_label)
 
-	var scan_panel := PanelContainer.new()
+	scan_panel = PanelContainer.new()
 	scan_panel.custom_minimum_size = Vector2(300, 52)
 	scan_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	scan_panel.position = Vector2(-150, -202)
 	_style_glass_panel(scan_panel, Color(0.40, 1.0, 0.83))
 	canvas.add_child(scan_panel)
+	hint_panels.append(scan_panel)
 
 	var scan_column := VBoxContainer.new()
 	scan_column.add_theme_constant_override("separation", 4)
@@ -673,6 +718,7 @@ func _create_hud() -> void:
 	scan_fill.set_corner_radius_all(4)
 	scan_bar.add_theme_stylebox_override("fill", scan_fill)
 	scan_column.add_child(scan_bar)
+	_update_hint_visibility()
 
 func _create_quick_slots(canvas: CanvasLayer) -> void:
 	var quick_bar := PanelContainer.new()
@@ -1023,7 +1069,7 @@ func _create_crafting_window() -> void:
 	title.add_theme_font_size_override("font_size", 25)
 	heading.add_child(title)
 	var close_button := Button.new()
-	close_button.text = "CLOSE  [ESC]"
+	close_button.text = "CLOSE"
 	close_button.pressed.connect(_toggle_crafting_window.bind(false))
 	heading.add_child(close_button)
 
@@ -1070,6 +1116,30 @@ func _refresh_crafting_window() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
 		card.add_child(row)
+		var technology_icon := TextureRect.new()
+		technology_icon.custom_minimum_size = Vector2(76.0, 76.0)
+		technology_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		technology_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		technology_icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		if recipe_scanned or recipe_id == "pressure_weave":
+			var technology_atlas := AtlasTexture.new()
+			technology_atlas.atlas = TECHNOLOGY_ICONS
+			technology_atlas.region = TECHNOLOGY_ICON_REGIONS[recipe_id]
+			technology_icon.texture = technology_atlas
+		row.add_child(technology_icon)
+		if not recipe_scanned and recipe_id != "pressure_weave":
+			var unknown_mark := Label.new()
+			unknown_mark.text = "?"
+			unknown_mark.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+			unknown_mark.offset_left = -18.0
+			unknown_mark.offset_right = 18.0
+			unknown_mark.offset_top = -25.0
+			unknown_mark.offset_bottom = 25.0
+			unknown_mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			unknown_mark.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			unknown_mark.add_theme_font_size_override("font_size", 32)
+			unknown_mark.add_theme_color_override("font_color", Color(0.72, 0.77, 0.86))
+			technology_icon.add_child(unknown_mark)
 		var info := VBoxContainer.new()
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(info)
@@ -1212,7 +1282,7 @@ func _toggle_radio() -> void:
 
 func _create_pause_menu() -> void:
 	pause_overlay = ColorRect.new()
-	pause_overlay.color = Color(0.0, 0.012, 0.04, 0.91)
+	pause_overlay.color = Color(0.0, 0.012, 0.04, 0.68)
 	pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	pause_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	pause_overlay.visible = false
@@ -1220,11 +1290,11 @@ func _create_pause_menu() -> void:
 	hud_canvas.add_child(pause_overlay)
 
 	pause_panel = PanelContainer.new()
-	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
-	pause_panel.offset_left = -390.0
-	pause_panel.offset_right = -22.0
-	pause_panel.offset_top = 20.0
-	pause_panel.offset_bottom = -20.0
+	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	pause_panel.offset_left = 22.0
+	pause_panel.offset_right = 416.0
+	pause_panel.offset_top = 22.0
+	pause_panel.offset_bottom = -22.0
 	_style_glass_panel(pause_panel, Color(0.38, 0.94, 0.91))
 	pause_overlay.add_child(pause_panel)
 	pause_scroll = ScrollContainer.new()
@@ -1236,7 +1306,7 @@ func _create_pause_menu() -> void:
 	pause_scroll.add_child(pause_content)
 	confirm_exit_dialog = ConfirmationDialog.new()
 	confirm_exit_dialog.title = "Save and exit?"
-	confirm_exit_dialog.dialog_text = "Save your current progress and close The Quiet Trench?"
+	confirm_exit_dialog.dialog_text = "Save your current progress and close Under Pressure?"
 	confirm_exit_dialog.ok_button_text = "SAVE AND EXIT"
 	confirm_exit_dialog.confirmed.connect(_save_and_exit)
 	pause_overlay.add_child(confirm_exit_dialog)
@@ -1258,12 +1328,18 @@ func _set_pause_menu(open: bool) -> void:
 	_refresh_hud()
 
 func _show_pause_menu() -> void:
+	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	pause_panel.offset_left = 22.0
+	pause_panel.offset_right = 416.0
+	pause_panel.offset_top = 22.0
+	pause_panel.offset_bottom = -22.0
 	_clear_pause_content()
-	var title := Label.new()
-	title.text = "PAUSED"
-	title.add_theme_font_size_override("font_size", 25)
-	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.89))
-	pause_content.add_child(title)
+	_add_menu_banner(pause_content, "UNDER PRESSURE", 230.0)
+	var subtitle := Label.new()
+	subtitle.text = "DIVE MENU"
+	subtitle.add_theme_font_size_override("font_size", 14)
+	subtitle.add_theme_color_override("font_color", Color(0.57, 0.88, 0.94))
+	pause_content.add_child(subtitle)
 	_add_menu_button("CONTINUE", _set_pause_menu.bind(false))
 	_add_menu_button("SAVE GAME", _save_from_menu)
 	_add_menu_button("LOAD GAME", _load_from_menu)
@@ -1277,9 +1353,20 @@ func _show_pause_menu() -> void:
 func _show_settings(open: bool) -> void:
 	settings_panel_visible = open
 	if not open:
+		pause_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+		pause_panel.offset_left = 22.0
+		pause_panel.offset_right = 416.0
+		pause_panel.offset_top = 22.0
+		pause_panel.offset_bottom = -22.0
 		_show_pause_menu()
 		return
+	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	pause_panel.offset_left = -470.0
+	pause_panel.offset_right = 470.0
+	pause_panel.offset_top = -270.0
+	pause_panel.offset_bottom = 270.0
 	_clear_pause_content()
+	_add_menu_banner(pause_content, "UNDER PRESSURE", 150.0)
 	var heading := HBoxContainer.new()
 	pause_content.add_child(heading)
 	var title := Label.new()
@@ -1331,6 +1418,18 @@ func _show_settings(open: bool) -> void:
 	autosave_option.item_selected.connect(_on_autosave_selected.bind(autosave_option))
 	pause_content.add_child(autosave_option)
 
+	var fullscreen_toggle := CheckButton.new()
+	fullscreen_toggle.text = "Fullscreen display"
+	fullscreen_toggle.button_pressed = bool(settings_data["fullscreen"])
+	fullscreen_toggle.toggled.connect(_on_fullscreen_toggled)
+	pause_content.add_child(fullscreen_toggle)
+
+	var hints_toggle := CheckButton.new()
+	hints_toggle.text = "Show gameplay hints beneath the diver"
+	hints_toggle.button_pressed = bool(settings_data["show_gameplay_hints"])
+	hints_toggle.toggled.connect(_on_hints_toggled)
+	pause_content.add_child(hints_toggle)
+
 	var divider := HSeparator.new()
 	pause_content.add_child(divider)
 	_add_settings_label("KEY BINDINGS")
@@ -1354,6 +1453,29 @@ func _show_settings(open: bool) -> void:
 	settings_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	settings_message.add_theme_color_override("font_color", Color(1.0, 0.70, 0.58))
 	pause_content.add_child(settings_message)
+
+func _add_menu_banner(parent: Control, title_text: String, height: float) -> void:
+	var banner := TextureRect.new()
+	banner.texture = MENU_OCEAN_ART
+	banner.custom_minimum_size = Vector2(0.0, height)
+	banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	banner.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	parent.add_child(banner)
+	var title := Label.new()
+	title.text = title_text
+	title.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	title.offset_left = 14.0
+	title.offset_top = -48.0
+	title.offset_right = -8.0
+	title.offset_bottom = -12.0
+	title.add_theme_font_size_override("font_size", 25)
+	title.add_theme_color_override("font_color", Color(0.88, 1.0, 0.96))
+	title.add_theme_color_override("font_shadow_color", Color(0.0, 0.08, 0.16, 0.85))
+	title.add_theme_constant_override("shadow_offset_x", 2)
+	title.add_theme_constant_override("shadow_offset_y", 2)
+	banner.add_child(title)
 
 func _clear_pause_content() -> void:
 	for child in pause_content.get_children():
@@ -1391,6 +1513,16 @@ func _on_autosave_selected(index: int, option: OptionButton) -> void:
 	settings_data["autosave_interval"] = int(option.get_item_metadata(index))
 	autosave_elapsed = 0.0
 	_save_settings()
+
+func _on_fullscreen_toggled(enabled: bool) -> void:
+	settings_data["fullscreen"] = enabled
+	_apply_settings()
+	_save_settings()
+
+func _on_hints_toggled(enabled: bool) -> void:
+	settings_data["show_gameplay_hints"] = enabled
+	_save_settings()
+	_update_hint_visibility()
 
 func _start_keybinding(action: String) -> void:
 	awaiting_keybinding = action
@@ -1532,6 +1664,8 @@ func _apply_installed_techs() -> void:
 	if installed_techs.has("fins"):
 		diver.movement_speed = OceanDiver.MOVE_SPEED * 1.42
 		diver.has_fins = true
+	diver.fins_sprite.visible = installed_techs.has("fins")
+	diver.helmet_sprite.visible = installed_techs.has("deep_tank")
 	if installed_techs.has("submersible"):
 		diver.movement_speed *= 1.2
 		diver.has_submersible = true
@@ -1551,14 +1685,14 @@ func _apply_installed_techs() -> void:
 
 func _style_glass_panel(panel: PanelContainer, accent: Color) -> void:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.015, 0.075, 0.14, 0.84)
-	style.border_color = Color(accent.r, accent.g, accent.b, 0.55)
+	style.bg_color = Color(0.006, 0.035, 0.075, 0.70)
+	style.border_color = Color(0.18, 0.70, 0.89, 0.68).lerp(accent, 0.24)
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(14)
-	style.content_margin_left = 16.0
-	style.content_margin_right = 16.0
-	style.content_margin_top = 12.0
-	style.content_margin_bottom = 12.0
+	style.set_corner_radius_all(18)
+	style.content_margin_left = 18.0
+	style.content_margin_right = 18.0
+	style.content_margin_top = 14.0
+	style.content_margin_bottom = 14.0
 	style.shadow_color = Color(0.0, 0.035, 0.09, 0.55)
 	style.shadow_size = 10
 	panel.add_theme_stylebox_override("panel", style)
@@ -1609,23 +1743,23 @@ func _refresh_hud() -> void:
 	prompt_label.get_parent().visible = not prompt_label.text.is_empty()
 	if crafting_overlay.visible or inventory_open:
 		prompt_label.get_parent().visible = false
+	_update_hint_visibility()
+
+func _update_hint_visibility() -> void:
+	var show_hints := bool(settings_data.get("show_gameplay_hints", false))
+	for hint_panel in hint_panels:
+		hint_panel.visible = show_hints and not crafting_overlay.visible and not inventory_open
 
 func _create_analyzer_beam() -> void:
-	analyzer_cone = Polygon2D.new()
-	analyzer_cone.color = Color(0.25, 0.95, 0.89, 0.13)
-	analyzer_cone.z_index = 6
-	add_child(analyzer_cone)
-	analyzer_arc = Line2D.new()
-	analyzer_arc.width = 2.0
-	analyzer_arc.default_color = Color(0.42, 1.0, 0.91, 0.7)
-	analyzer_arc.z_index = 7
-	add_child(analyzer_arc)
-	analyzer_edges = Line2D.new()
-	analyzer_edges.width = 1.5
-	analyzer_edges.default_color = Color(0.42, 1.0, 0.91, 0.32)
-	analyzer_edges.z_index = 7
-	add_child(analyzer_edges)
-	analyzer_beam = analyzer_edges
+	analyzer_beam = MeshInstance2D.new()
+	analyzer_beam.name = "SoftAnalyzerBeam"
+	analyzer_beam.z_index = 6
+	analyzer_mesh = ArrayMesh.new()
+	analyzer_beam.mesh = analyzer_mesh
+	var beam_material := CanvasItemMaterial.new()
+	beam_material.blend_mode = CanvasItemMaterial.BLEND_MODE_MIX
+	analyzer_beam.material = beam_material
+	add_child(analyzer_beam)
 
 func _update_analyzer(delta: float) -> void:
 	if crafting_overlay.visible or inventory_open:
@@ -1645,14 +1779,11 @@ func _update_analyzer(delta: float) -> void:
 
 	var is_scanning := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 	var target := _target_in_cone(start, direction)
-	var beam_color := (
-		Color(0.56, 1.0, 0.62, 0.83)
+	analyzer_beam.modulate = (
+		Color(0.91, 1.0, 0.62, 1.0)
 		if is_scanning and target != null
-		else Color(0.42, 1.0, 0.91, 0.7)
+		else Color(0.83, 1.0, 0.55, 0.84)
 	)
-	analyzer_arc.default_color = beam_color
-	analyzer_edges.default_color = Color(beam_color.r, beam_color.g, beam_color.b, 0.34)
-	analyzer_cone.color = Color(beam_color.r, beam_color.g, beam_color.b, 0.12)
 	if not is_scanning or target == null or scan_cooldown > 0.0:
 		scan_target = null
 		scan_progress = 0.0
@@ -1671,23 +1802,41 @@ func _update_analyzer(delta: float) -> void:
 
 func _draw_analyzer_cone(start: Vector2, direction: Vector2) -> void:
 	var origin := to_local(start)
-	var arc_points := PackedVector2Array()
-	var polygon_points := PackedVector2Array([origin])
+	var angle_steps := 24
+	var distance_steps := 8
+	var vertices := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
 	var half_angle := deg_to_rad(ANALYZER_HALF_ANGLE)
-	for index in range(17):
-		var ratio := float(index) / 16.0
-		var ray := direction.rotated(lerpf(-half_angle, half_angle, ratio))
-		var point := to_local(start + ray * ANALYZER_RANGE)
-		arc_points.append(point)
-		polygon_points.append(point)
-	analyzer_cone.polygon = polygon_points
-	analyzer_arc.points = arc_points
-	analyzer_edges.points = PackedVector2Array([origin, arc_points[0], origin, arc_points[-1]])
+	for distance_index in range(distance_steps + 1):
+		var distance_ratio := float(distance_index) / distance_steps
+		var distance_fade := pow(maxf(0.0, sin(distance_ratio * PI)), 0.72)
+		for angle_index in range(angle_steps + 1):
+			var side_ratio := float(angle_index) / angle_steps * 2.0 - 1.0
+			var edge_fade := pow(maxf(0.0, 1.0 - absf(side_ratio)), 0.85)
+			var ray := direction.rotated(side_ratio * half_angle)
+			var point := origin + ray * ANALYZER_RANGE * distance_ratio
+			vertices.append(Vector3(point.x, point.y, 0.0))
+			colors.append(Color(0.72, 1.0, 0.31, 0.24 * edge_fade * distance_fade))
+	for distance_index in range(distance_steps):
+		for angle_index in range(angle_steps):
+			var current := distance_index * (angle_steps + 1) + angle_index
+			var next_row := current + angle_steps + 1
+			indices.append_array(PackedInt32Array([
+				current, current + 1, next_row,
+				current + 1, next_row + 1, next_row
+			]))
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	analyzer_mesh.clear_surfaces()
+	analyzer_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 
 func _clear_analyzer_beam() -> void:
-	analyzer_cone.polygon = PackedVector2Array()
-	analyzer_arc.clear_points()
-	analyzer_edges.clear_points()
+	if analyzer_mesh != null:
+		analyzer_mesh.clear_surfaces()
 
 func _advance_scan(target: AlienLifeform, delta: float) -> void:
 	if target.harvested or target.scanned:

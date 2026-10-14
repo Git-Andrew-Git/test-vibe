@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="340" viewBox="0 0 1100 340">
+  <defs>
+    <linearGradient id="water" x2="0" y2="1">
+      <stop stop-color="#1781a6"/>
+      <stop offset=".55" stop-color="#10507c"/>
+      <stop offset="1" stop-color="#071e40"/>
+    </linearGradient>
+    <linearGradient id="beam" x2="0" y2="1">
+      <stop stop-color="#fff0ad" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#80f8df" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="kelp" x2="0" y2="1">
+      <stop stop-color="#8effcd"/>
+      <stop offset="1" stop-color="#168b92"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop stop-color="#b5fff2" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#62d6e8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1100" height="340" fill="url(#water)"/>
+  <ellipse cx="540" cy="34" rx="510" ry="100" fill="url(#glow)"/>
+  <path d="M335 0h55l204 280h-58Zm180 0h38l133 250h-44Z" fill="url(#beam)"/>
+  <path d="M0 226q110-45 201-6t170-1q91-53 189-3t188 8q97-40 181-2t171 0v118H0Z" fill="#102a50"/>
+  <path d="M0 261q133-39 231-1t175-11q90-37 184 2t179-7q105-43 195-1t136 1v96H0Z" fill="#091d3b" opacity=".88"/>
+  <g fill="none" stroke="url(#kelp)" stroke-linecap="round">
+    <path d="M62 285q-12-68 11-119t6-88m26 208q23-77 4-125t16-89m844 208q-15-69 9-121t4-83m33 204q22-71 4-118t14-85" stroke-width="12"/>
+    <path d="M61 213q-29-32-39-64m42 26q29-34 37-64m-5 110q-27-29-38-59m891 57q-31-31-43-64m43 25q30-34 40-64" stroke-width="6"/>
+  </g>
+  <g fill="#ff91dc" stroke="#ffd1ef" stroke-width="3">
+    <path d="M257 257q-22-35 2-62 18 18 20 38 19-40 47-46-16 34-10 70Zm519 5q-19-34 4-61 16 18 18 39 22-40 49-46-17 34-11 71Z"/>
+  </g>
+  <g fill="#b8fff0">
+    <circle cx="352" cy="181" r="4"/><circle cx="367" cy="202" r="2"/>
+    <circle cx="649" cy="149" r="3"/><circle cx="664" cy="164" r="2"/>
+    <circle cx="475" cy="230" r="3"/><circle cx="731" cy="214" r="4"/>
+  </g>
+  <g transform="translate(678 133)">
+    <path d="M0 18q31-31 69-9l38 22-41 15q-40 11-66-8l-30 17 13-29-13-29Z" fill="#99ede3" stroke="#dafbf1" stroke-width="4"/>
+    <circle cx="24" cy="16" r="4" fill="#133957"/>
+    <path d="M48 20q38-35 47-54-2 43-26 69m-11-6q16 28 49 42-40 1-65-27" fill="#36b4c5" opacity=".9"/>
+  </g>
+</svg>

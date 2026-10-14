@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="896" height="128" viewBox="0 0 896 128">
+  <defs>
+    <linearGradient id="metal" x2="0" y2="1">
+      <stop stop-color="#a7f4e7"/>
+      <stop offset="1" stop-color="#247e9f"/>
+    </linearGradient>
+    <linearGradient id="fabric" x2="0" y2="1">
+      <stop stop-color="#ffca7c"/>
+      <stop offset="1" stop-color="#cc5871"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="#d7fff2" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+    <g transform="translate(8 8)">
+      <path d="M20 31 47 15l29 14 6 53-19 12-43-8Z" fill="url(#fabric)"/>
+      <path d="m34 39 25-2 5 21-30 2Zm-2 42 2 23 16 0 4-24m13 1 5 22 16 0-7-25"/>
+      <circle cx="47" cy="27" r="11" fill="url(#metal)"/>
+    </g>
+    <g transform="translate(136 8)">
+      <path d="M20 35q4-27 29-28 27 1 29 29v35q-10 18-30 18-20-1-29-18Z" fill="url(#metal)"/>
+      <path d="M27 38q22-13 45 0v20q-20 15-42 0Z" fill="#123c63"/>
+      <path d="M37 44q13-5 25-1L42 56Z" fill="#9af7e6"/>
+    </g>
+    <g transform="translate(264 8)">
+      <path d="M25 24h52v58H25Zm12-8v72m28-72v72"/>
+      <path d="M28 86 11 106h34l8-20m20 0 18 20H58l-7-20" fill="url(#metal)"/>
+      <circle cx="51" cy="51" r="9" fill="#ffda8d"/>
+    </g>
+    <g transform="translate(392 8)">
+      <path d="M19 31q28-21 57 0l9 47-35 21-39-21Z" fill="url(#metal)"/>
+      <path d="M29 42q18 10 37 0v19q-19 11-37 0Z" fill="#123c63"/>
+      <path d="M41 14 52 7l12 8 12-3 4 13-9 9H31l-8-9 6-12Z"/>
+      <circle cx="68" cy="53" r="3" fill="#fff5c8"/>
+    </g>
+    <g transform="translate(520 8)">
+      <path d="M18 48q30-24 64-3l12 30-20 20H29L12 76Z" fill="url(#metal)"/>
+      <path d="M32 46 20 18l29 12 14-23 7 31m-8 17 27-20-5 31"/>
+      <circle cx="50" cy="60" r="9" fill="#14375b"/>
+    </g>
+    <g transform="translate(648 8)">
+      <path d="M12 48 48 24l48 24-7 38-40 19-38-22Z" fill="url(#metal)"/>
+      <path d="m20 51 56-8M25 68l49-7m-34 29 9-42"/>
+      <path d="M50 5v28m-18-18 18 18 18-18"/>
+    </g>
+    <g transform="translate(776 8)">
+      <path d="M50 18q13-24 26 0 10 17-8 32 24 4 17 29-5 20-32 13-17 22-33 7-14-14 0-32-25-13-15-36 8-17 32-13Z" fill="url(#fabric)"/>
+      <path d="M49 38q-13 11 0 20 13-9 0-20Zm0 22v18"/>
+      <circle cx="49" cy="21" r="7" fill="#fff0a4"/>
+    </g>
+  </g>
+</svg>

@@ -21,15 +21,38 @@ func _run() -> void:
 	await process_frame
 
 	var world: OceanWorld = game.get_child(0)
+	game._refresh_crafting_window()
+	var unknown_card: PanelContainer = game.recipe_list.get_child(1)
+	var unknown_card_row: HBoxContainer = unknown_card.get_child(0)
+	var unknown_card_icon: TextureRect = unknown_card_row.get_child(0)
 	_expect(not _contains_earth_fish(world), "No un-interactable Earth-like fish are present.")
 	_expect(world.bubbles.size() >= 40, "The ocean has animated ambient bubbles.")
-	_expect(world.get_node_or_null("TrenchFloor") != null, "A visible illustrated trench landscape anchors the deep.")
+	_expect(world.get_node_or_null("TrenchFloorArt") != null, "A visible illustrated trench floor anchors the deep.")
+	_expect(
+		world.get_node_or_null("WestCave") != null
+		and world.get_node_or_null("WestCaveRoof") != null
+		and world.get_node_or_null("WestCaveCollision") != null,
+		"Solid underwater terrain includes a traversable cave and obstacle formations."
+	)
+	_expect(world.WATER_SURFACE_Y == 0.0, "The animated ocean surface has a defined waterline.")
 	_expect(game.diver.diver_sprite.texture != null, "The smaller diver uses the illustrated sprite.")
+	_expect(
+		not game.diver.helmet_sprite.visible and not game.diver.fins_sprite.visible,
+		"The diver begins without a helmet or fins."
+	)
 	_expect(game.lifeforms.size() == 27, "All eight alien species have interactable specimens.")
 	_expect(game.pickups.size() == 10, "The world contains salvage and a story pickup.")
 	_expect(game.analyzer_beam != null, "The analyzer has an aiming beam.")
 	_expect(game.ANALYZER_HALF_ANGLE * 2.0 == 30.0, "The analyzer beam covers a 30-degree cone.")
-	_expect(is_equal_approx(game.ANALYZER_RANGE, 360.0), "The analyzer beam has a short, finite 360-unit reach.")
+	_expect(is_equal_approx(game.ANALYZER_RANGE, 180.0), "The analyzer beam has a very short, finite 180-unit reach.")
+	_expect(
+		game.analyzer_beam is MeshInstance2D and game.analyzer_beam.mesh != null,
+		"The scanner uses a soft-edged beam mesh rather than hard cone outlines."
+	)
+	_expect(
+		unknown_card_icon.texture == null and unknown_card_icon.get_child_count() > 0,
+		"An unknown technology displays a question mark instead of its crafted icon."
+	)
 	_expect(game.diver.HORIZONTAL_LIMIT >= 1400.0, "The diver can explore the expanded horizontal world.")
 	_expect(game.health == 100.0, "The diver starts with 100 health.")
 	_expect(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "The mouse cursor remains visible while playing.")
@@ -43,12 +66,22 @@ func _run() -> void:
 		game.health_bar.custom_minimum_size == Vector2(68.0, 7.0),
 		"The compact health meter follows beneath the diver."
 	)
+	_expect(
+		game.diver.global_position.y < world.WATER_SURFACE_Y,
+		"The diver starts above the visible ocean surface."
+	)
+	_expect(
+		world.WEATHER_TYPES.size() >= 4
+		and world.DAY_LENGTH_SECONDS > 0.0
+		and world.daylight > 0.98,
+		"The ocean starts in daylight and supports day-night and multiple weather cycles."
+	)
 	var hud_labels: Array[Node] = game.hud_canvas.find_children("*", "Label", true, false)
 	var has_title_panel := false
 	for hud_label in hud_labels:
 		if (hud_label as Label).text.contains("THE QUIET TRENCH"):
 			has_title_panel = true
-	_expect(not has_title_panel, "The Quiet Trench information panel is absent from the HUD.")
+	_expect(not has_title_panel, "The game title panel is absent from the gameplay HUD.")
 	_expect(
 		game._inventory_item_details("moon_mucus").contains("UNANALYZED"),
 		"Unscanned sample characteristics remain hidden."
@@ -122,12 +155,12 @@ func _run() -> void:
 		lifeform.harvested = true
 	moon_jelly.harvested = false
 	var cone_origin: Vector2 = game.diver.global_position
-	moon_jelly.global_position = cone_origin + Vector2(300.0, 65.0)
+	moon_jelly.global_position = cone_origin + Vector2(120.0, 25.0)
 	_expect(
 		game._target_in_cone(cone_origin, Vector2.RIGHT, false) == moon_jelly,
 		"A lifeform inside the 30-degree analyzer cone is targetable."
 	)
-	moon_jelly.global_position = cone_origin + Vector2(300.0, 110.0)
+	moon_jelly.global_position = cone_origin + Vector2(120.0, 65.0)
 	_expect(
 		game._target_in_cone(cone_origin, Vector2.RIGHT) == null,
 		"A lifeform outside the analyzer cone is not targetable."
@@ -217,6 +250,7 @@ func _run() -> void:
 
 	game._craft_recipe("fins")
 	_expect(game.diver.has_fins, "Crafted fins enable the Shift boost.")
+	_expect(game.diver.fins_sprite.visible, "Crafting fins equips the diver's fin art.")
 	var swim_speed: float = game.diver._effective_movement_speed(false)
 	var boosted_speed: float = game.diver._effective_movement_speed(true)
 	_expect(
@@ -226,6 +260,7 @@ func _run() -> void:
 	game._craft_recipe("deep_tank")
 	_expect(game.oxygen_capacity == 230.0, "The scrubber tank increases oxygen capacity.")
 	_expect(game.diver.depth_limit == 1650.0, "The scrubber tank increases safe dive depth.")
+	_expect(game.diver.helmet_sprite.visible, "Crafting the scrubber tank equips the diver's helmet.")
 	game._craft_recipe("lamp")
 	_expect(game.lamp_light != null and game.lamp_light.texture != null, "The lamp creates a functioning light.")
 	game._craft_recipe("submersible")
@@ -275,9 +310,21 @@ func _run() -> void:
 	escape_event.pressed = true
 	game._unhandled_input(escape_event)
 	_expect(game.pause_menu_open and game.get_tree().paused, "Escape opens a pausing menu.")
-	_expect(game.pause_overlay.color.a > 0.85, "The pause overlay is darker and less transparent.")
+	_expect(game.pause_overlay.color.a < 0.75, "The acrylic pause overlay lets the ocean show through.")
+	_expect(
+		game.pause_panel.anchor_left == 0.0
+		and is_equal_approx(game.pause_panel.offset_left, 22.0),
+		"The main menu is anchored along the left side of the screen."
+	)
 	game._show_settings(true)
 	_expect(game.settings_panel_visible, "Settings can be opened from the pause menu.")
+	_expect(
+		is_equal_approx(game.pause_panel.anchor_left, 0.5)
+		and is_equal_approx(game.pause_panel.offset_left, -470.0)
+		and is_equal_approx(game.pause_panel.offset_right, 470.0),
+		"The wider settings panel is centered on the screen."
+	)
+	_expect(not game.settings_data["show_gameplay_hints"], "Gameplay hints are off by default.")
 	_expect(
 		game.AUTOSAVE_INTERVALS.has(30) and game.AUTOSAVE_INTERVALS.has(60)
 		and game.AUTOSAVE_INTERVALS.has(300) and game.AUTOSAVE_INTERVALS.has(600)
