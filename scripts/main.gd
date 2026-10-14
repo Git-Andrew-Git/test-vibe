@@ -13,9 +13,27 @@ const UPGRADED_DEPTH_LIMIT := 1050.0
 const SUIT_DEPTH_LIMIT := 1650.0
 const SUB_DEPTH_LIMIT := 2400.0
 const SAVE_PATH := "user://quiet_trench_save.json"
+const SETTINGS_PATH := "user://quiet_trench_settings.json"
 const SCAN_SECONDS := 0.85
 const ANALYZER_RANGE := 780.0
+const ANALYZER_HALF_ANGLE := 15.0
 const WORLD_LIMIT_X := 1400.0
+const AUTOSAVE_INTERVALS := [0, 30, 60, 300, 600, 900, 1800]
+const RESOLUTIONS := [
+	Vector2i(1024, 576),
+	Vector2i(1280, 720),
+	Vector2i(1600, 900),
+	Vector2i(1920, 1080)
+]
+const KEY_BINDINGS := {
+	"move_up": "Swim up",
+	"move_down": "Swim down",
+	"move_left": "Swim left",
+	"move_right": "Swim right",
+	"interact": "Interact",
+	"technology": "Technology bench",
+	"pause": "Pause menu"
+}
 
 const RECIPES := {
 	"pressure_weave": {
@@ -162,6 +180,7 @@ const SPECIES := [
 ]
 
 var save_path := SAVE_PATH
+var settings_path := SETTINGS_PATH
 var diver: OceanDiver
 var pickups: Array[SalvagePickup] = []
 var lifeforms: Array[AlienLifeform] = []
@@ -177,6 +196,7 @@ var inventory := {
 	"spire_coral": 0,
 	"abyssal_bloom": 0
 }
+var discovered_materials := {}
 var unlocked_recipes := {"pressure_weave": true}
 var installed_techs := {}
 var oxygen := STARTING_OXYGEN
@@ -186,6 +206,9 @@ var health := 100.0
 var scan_target: AlienLifeform
 var scan_progress := 0.0
 var analyzer_beam: Line2D
+var analyzer_cone: Polygon2D
+var analyzer_arc: Line2D
+var analyzer_edges: Line2D
 var scan_cooldown := 0.0
 var dart_cooldown := 0.0
 var suit_upgraded := false
@@ -210,8 +233,30 @@ var recipe_details: Label
 var selected_recipe := ""
 var hud_canvas: CanvasLayer
 var lamp_light: PointLight2D
+var radio_button: Button
+var radio_panel: PanelContainer
+var pause_overlay: ColorRect
+var pause_panel: PanelContainer
+var pause_scroll: ScrollContainer
+var pause_content: VBoxContainer
+var pause_message: Label
+var settings_message: Label
+var confirm_exit_dialog: ConfirmationDialog
+var settings_data := {
+	"resolution": Vector2i(1280, 720),
+	"master_volume": 1.0,
+	"autosave_interval": 60
+}
+var autosave_elapsed := 0.0
+var awaiting_keybinding := ""
+var pause_menu_open := false
+var settings_panel_visible := false
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
+	_setup_gameplay_inputs()
+	_load_settings()
 	var world := Node2D.new()
 	world.set_script(WorldScript)
 	world.z_index = -10
@@ -230,11 +275,111 @@ func _ready() -> void:
 	_create_hud()
 	_create_analyzer_beam()
 	_create_crafting_window()
+	_create_pause_menu()
+	_create_radio_panel()
 	_apply_installed_techs()
 	_refresh_hud()
 	_refresh_crafting_window()
 
+func _setup_gameplay_inputs() -> void:
+	var defaults := {
+		"move_up": [KEY_W, KEY_UP],
+		"move_down": [KEY_S, KEY_DOWN],
+		"move_left": [KEY_A, KEY_LEFT],
+		"move_right": [KEY_D, KEY_RIGHT],
+		"interact": [KEY_E],
+		"technology": [KEY_F],
+		"pause": [KEY_ESCAPE]
+	}
+	for action in defaults:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		if InputMap.action_get_events(action).is_empty():
+			for keycode in defaults[action]:
+				var key_event := InputEventKey.new()
+				key_event.physical_keycode = keycode
+				InputMap.action_add_event(action, key_event)
+
+func _load_settings() -> void:
+	if not FileAccess.file_exists(settings_path):
+		_apply_settings()
+		return
+	var file := FileAccess.open(settings_path, FileAccess.READ)
+	if file == null:
+		push_error("Could not read settings: %s" % error_string(FileAccess.get_open_error()))
+		return
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	if not parsed is Dictionary:
+		push_error("Settings file is invalid JSON.")
+		return
+	var resolution_values: Array = parsed.get("resolution", [1280, 720])
+	if resolution_values.size() == 2:
+		var saved_resolution := Vector2i(
+			int(resolution_values[0]),
+			int(resolution_values[1])
+		)
+		if RESOLUTIONS.has(saved_resolution):
+			settings_data["resolution"] = saved_resolution
+		else:
+			push_warning("Unsupported saved resolution; using the default.")
+	settings_data["master_volume"] = clampf(float(parsed.get("master_volume", 1.0)), 0.0, 1.0)
+	var saved_bindings: Dictionary = parsed.get("key_bindings", {})
+	for action in KEY_BINDINGS:
+		if not saved_bindings.has(action) or not InputMap.has_action(action):
+			continue
+		InputMap.action_erase_events(action)
+		for physical_keycode in saved_bindings[action]:
+			var key_event := InputEventKey.new()
+			key_event.physical_keycode = int(physical_keycode) as Key
+			InputMap.action_add_event(action, key_event)
+	var autosave_interval := int(parsed.get("autosave_interval", 60))
+	if autosave_interval in AUTOSAVE_INTERVALS:
+		settings_data["autosave_interval"] = autosave_interval
+	_apply_settings()
+
+func _apply_settings() -> void:
+	var resolution: Vector2i = settings_data["resolution"]
+	DisplayServer.window_set_size(resolution)
+	var master_bus := AudioServer.get_bus_index("Master")
+	if master_bus >= 0:
+		AudioServer.set_bus_volume_linear(master_bus, float(settings_data["master_volume"]))
+	else:
+		push_error("The Master audio bus is missing.")
+
+func _save_settings() -> void:
+	var file := FileAccess.open(settings_path, FileAccess.WRITE)
+	if file == null:
+		push_error("Could not save settings: %s" % error_string(FileAccess.get_open_error()))
+		return
+	var saved_settings := settings_data.duplicate()
+	var resolution: Vector2i = settings_data["resolution"]
+	saved_settings["resolution"] = [resolution.x, resolution.y]
+	var saved_bindings := {}
+	for action in KEY_BINDINGS:
+		var keycodes: Array[int] = []
+		for assigned_event in InputMap.action_get_events(action):
+			if assigned_event is InputEventKey:
+				keycodes.append((assigned_event as InputEventKey).physical_keycode)
+		saved_bindings[action] = keycodes
+	saved_settings["key_bindings"] = saved_bindings
+	file.store_string(JSON.stringify(saved_settings))
+	var error := file.get_error()
+	if error != OK:
+		push_error("Could not write settings: %s" % error_string(error))
+
+func _update_autosave(delta: float) -> void:
+	var interval := int(settings_data["autosave_interval"])
+	if interval <= 0:
+		autosave_elapsed = 0.0
+		return
+	autosave_elapsed += delta
+	if autosave_elapsed >= float(interval):
+		autosave_elapsed = fmod(autosave_elapsed, float(interval))
+		_save_game()
+
 func _process(delta: float) -> void:
+	if get_tree().paused:
+		return
 	var depth := maxf(0.0, diver.global_position.y - 77.0)
 	var depth_ratio := clampf(depth / float(SUB_DEPTH_LIMIT), 0.0, 1.0)
 	world_tint.color = Color.WHITE.lerp(Color(0.18, 0.29, 0.48), depth_ratio * 0.74)
@@ -262,19 +407,32 @@ func _process(delta: float) -> void:
 
 	scan_cooldown = maxf(0.0, scan_cooldown - delta)
 	dart_cooldown = maxf(0.0, dart_cooldown - delta)
+	_update_autosave(delta)
 	_update_analyzer(delta)
 	_refresh_hud()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		var key_event := event as InputEventKey
-		if key_event.physical_keycode == KEY_E:
-			_interact()
-		elif key_event.physical_keycode == KEY_F:
-			_toggle_crafting_window(not crafting_overlay.visible)
-		elif key_event.physical_keycode == KEY_ESCAPE and crafting_overlay.visible:
-			_toggle_crafting_window(false)
+	if awaiting_keybinding != "":
+		if event is InputEventKey and event.pressed and not event.echo:
+			_apply_keybinding(event as InputEventKey)
 		return
+	if event.is_action_pressed("pause") and not event.is_echo():
+		if settings_panel_visible:
+			_show_settings(false)
+		elif pause_menu_open:
+			_set_pause_menu(false)
+		else:
+			_set_pause_menu(true)
+		get_viewport().set_input_as_handled()
+		return
+	if get_tree().paused:
+		return
+	if event.is_action_pressed("interact") and not event.is_echo():
+		_interact()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("technology") and not event.is_echo():
+		_toggle_crafting_window(not crafting_overlay.visible)
+		get_viewport().set_input_as_handled()
 	if event is InputEventMouseButton and event.pressed and not crafting_overlay.visible:
 		var mouse_event := event as InputEventMouseButton
 		if mouse_event.button_index == MOUSE_BUTTON_RIGHT:
@@ -347,6 +505,7 @@ func _add_pickup(
 func _create_hud() -> void:
 	var canvas := CanvasLayer.new()
 	canvas.layer = 2
+	canvas.process_mode = Node.PROCESS_MODE_ALWAYS
 	hud_canvas = canvas
 	add_child(canvas)
 
@@ -365,11 +524,6 @@ func _create_hud() -> void:
 	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.89))
 	title.add_theme_font_size_override("font_size", 23)
 	left_column.add_child(title)
-
-	depth_label = Label.new()
-	depth_label.name = "DepthLabel"
-	depth_label.add_theme_color_override("font_color", Color(0.77, 0.91, 1.0))
-	left_column.add_child(depth_label)
 
 	var oxygen_caption := Label.new()
 	oxygen_caption.text = "OXYGEN"
@@ -422,19 +576,38 @@ func _create_hud() -> void:
 	objective_label.add_theme_font_size_override("font_size", 14)
 	left_column.add_child(objective_label)
 
-	var story_panel := PanelContainer.new()
-	story_panel.custom_minimum_size = Vector2(500, 80)
-	story_panel.position = Vector2(390, 20)
-	_style_glass_panel(story_panel, Color(1.0, 0.70, 0.38))
-	canvas.add_child(story_panel)
+	depth_label = Label.new()
+	depth_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	depth_label.offset_left = 450.0
+	depth_label.offset_right = -450.0
+	depth_label.offset_top = 18.0
+	depth_label.offset_bottom = 52.0
+	depth_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	depth_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.98))
+	depth_label.add_theme_font_size_override("font_size", 19)
+	canvas.add_child(depth_label)
 
-	status_label = Label.new()
-	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	status_label.add_theme_color_override("font_color", Color(1.0, 0.91, 0.73))
-	status_label.add_theme_font_size_override("font_size", 16)
-	story_panel.add_child(status_label)
+	var radio_control := Button.new()
+	radio_control.text = "RADIO"
+	radio_control.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	radio_control.offset_left = -205.0
+	radio_control.offset_right = -112.0
+	radio_control.offset_top = 20.0
+	radio_control.offset_bottom = 62.0
+	radio_control.pressed.connect(_toggle_radio)
+	radio_control.name = "RadioButton"
+	radio_button = radio_control
+	canvas.add_child(radio_control)
+
+	var menu_button := Button.new()
+	menu_button.text = "MENU  [ESC]"
+	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	menu_button.offset_left = -106.0
+	menu_button.offset_right = -20.0
+	menu_button.offset_top = 20.0
+	menu_button.offset_bottom = 62.0
+	menu_button.pressed.connect(_set_pause_menu.bind(true))
+	canvas.add_child(menu_button)
 
 	var prompt_panel := PanelContainer.new()
 	prompt_panel.custom_minimum_size = Vector2(570, 56)
@@ -449,16 +622,6 @@ func _create_hud() -> void:
 	prompt_label.add_theme_color_override("font_color", Color(0.80, 1.0, 0.90))
 	prompt_label.add_theme_font_size_override("font_size", 17)
 	prompt_panel.add_child(prompt_label)
-
-	var controls_panel := PanelContainer.new()
-	controls_panel.position = Vector2(22, 645)
-	_style_glass_panel(controls_panel, Color(0.28, 0.86, 0.94))
-	canvas.add_child(controls_panel)
-	var controls := Label.new()
-	controls.text = "SWIM  WASD / ARROWS     USE  E     TECH  F     ANALYZE  HOLD LMB"
-	controls.add_theme_color_override("font_color", Color(0.80, 0.91, 1.0))
-	controls.add_theme_font_size_override("font_size", 13)
-	controls_panel.add_child(controls)
 
 	var scan_panel := PanelContainer.new()
 	scan_panel.custom_minimum_size = Vector2(300, 52)
@@ -559,8 +722,17 @@ func _refresh_crafting_window() -> void:
 		child.queue_free()
 	for recipe_id in RECIPES:
 		var recipe: Dictionary = RECIPES[recipe_id]
+		var recipe_scanned := unlocked_recipes.has(recipe_id)
+		var recipe_known := _recipe_is_revealed(recipe_id)
 		var card := PanelContainer.new()
-		_style_glass_panel(card, Color(0.31, 0.88, 0.88))
+		_style_glass_panel(
+			card,
+			Color(0.55, 0.58, 0.67)
+			if not recipe_known
+			else Color(0.94, 0.28, 0.34)
+			if not _has_recipe_materials(recipe)
+			else Color(0.31, 0.88, 0.88)
+		)
 		recipe_list.add_child(card)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
@@ -569,35 +741,59 @@ func _refresh_crafting_window() -> void:
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(info)
 		var name_button := Button.new()
-		name_button.text = recipe.title
+		name_button.text = (
+			recipe.title
+			if recipe_scanned
+			else "Pressure-weave suit"
+			if recipe_id == "pressure_weave"
+			else "UNDISCOVERED TECHNOLOGY"
+			if not recipe_known
+			else "UNIDENTIFIED RESEARCH LEAD"
+		)
 		name_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		name_button.flat = true
 		name_button.add_theme_font_size_override("font_size", 18)
 		name_button.add_theme_color_override(
 			"font_color",
-			Color(0.58, 1.0, 0.86) if unlocked_recipes.has(recipe_id) else Color(0.67, 0.75, 0.83)
+			Color(0.58, 1.0, 0.86)
+			if recipe_scanned or recipe_id == "pressure_weave"
+			else Color(0.94, 0.36, 0.42)
+			if recipe_known and not _has_recipe_materials(recipe)
+			else Color(0.68, 0.71, 0.79)
 		)
 		name_button.pressed.connect(_select_recipe.bind(recipe_id))
 		info.add_child(name_button)
 
 		var scan_description: String = (
 			recipe.description
-			if unlocked_recipes.has(recipe_id)
-			else "UNKNOWN  —  Scan a %s with the analyzer." % recipe.scan
+			if recipe_scanned
+			else "Research incomplete. Analyze related alien life to identify this technology."
+			if recipe_known
+			else "Unknown"
 		)
 		var description := Label.new()
 		description.text = scan_description
 		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		description.add_theme_color_override(
 			"font_color",
-			Color(0.84, 0.92, 0.89) if unlocked_recipes.has(recipe_id) else Color(0.66, 0.75, 0.82)
+			Color(0.84, 0.92, 0.89)
+			if recipe_scanned
+			else Color(0.72, 0.46, 0.50)
+			if recipe_known and not _has_recipe_materials(recipe)
+			else Color(0.66, 0.69, 0.75)
 		)
 		info.add_child(description)
 
-		var ingredients := Label.new()
-		ingredients.text = _format_recipe_cost(recipe.cost)
-		ingredients.add_theme_color_override("font_color", Color(1.0, 0.79, 0.49))
-		info.add_child(ingredients)
+		if recipe_scanned or recipe_id == "pressure_weave":
+			var ingredients := Label.new()
+			ingredients.text = _format_recipe_cost(recipe.cost)
+			ingredients.add_theme_color_override("font_color", Color(1.0, 0.79, 0.49))
+			info.add_child(ingredients)
+		elif recipe_known:
+			var ingredients := Label.new()
+			ingredients.text = _format_discovered_recipe_cost(recipe.cost)
+			ingredients.add_theme_color_override("font_color", Color(0.71, 0.74, 0.81))
+			info.add_child(ingredients)
 
 		var craft_button := Button.new()
 		var enough_materials := _has_recipe_materials(recipe)
@@ -605,31 +801,318 @@ func _refresh_crafting_window() -> void:
 		if already_built:
 			craft_button.text = "INSTALLED"
 			craft_button.disabled = true
-		elif not unlocked_recipes.has(recipe_id):
+		elif not recipe_known:
 			craft_button.text = "UNKNOWN"
+			craft_button.disabled = true
+		elif not recipe_scanned and recipe_id != "pressure_weave":
+			craft_button.text = "SCAN TO IDENTIFY"
 			craft_button.disabled = true
 		elif enough_materials:
 			craft_button.text = "CRAFT"
 			craft_button.pressed.connect(_craft_recipe.bind(recipe_id))
 		else:
-			craft_button.text = "NEED SAMPLES"
+			craft_button.text = "MISSING MATERIALS"
 			craft_button.disabled = true
+		if recipe_known and not enough_materials:
+			craft_button.add_theme_color_override("font_color", Color(1.0, 0.39, 0.45))
 		row.add_child(craft_button)
 
 	if not RECIPES.has(selected_recipe):
 		selected_recipe = "pressure_weave"
 	recipe_details.text = _recipe_detail_text(selected_recipe)
 
-func _recipe_detail_text(recipe_id: String) -> String:
+func _recipe_is_revealed(recipe_id: String) -> bool:
+	if unlocked_recipes.has(recipe_id):
+		return true
 	var recipe: Dictionary = RECIPES[recipe_id]
-	var status := "READY TO BUILD"
+	for resource_id in recipe.cost:
+		if discovered_materials.has(resource_id):
+			return true
+	return false
+
+func _format_discovered_recipe_cost(cost: Dictionary) -> String:
+	var parts: Array[String] = []
+	for resource_id in cost:
+		if discovered_materials.has(resource_id):
+			parts.append("%s × %d" % [_resource_name(resource_id), int(cost[resource_id])])
+	if parts.is_empty():
+		return "No components identified yet."
+	return "KNOWN COMPONENTS  " + "   ·   ".join(parts)
+
+func _recipe_detail_text(recipe_id: String) -> String:
+	if not _recipe_is_revealed(recipe_id):
+		return "UNDISCOVERED TECHNOLOGY\nNo research data recovered."
+	var recipe: Dictionary = RECIPES[recipe_id]
 	if not unlocked_recipes.has(recipe_id):
-		status = "UNKNOWN — Analyzer scan required: %s" % recipe.scan
-	elif _is_technology_built(recipe_id):
+		return "PARTIAL RESEARCH\n%s" % _format_discovered_recipe_cost(recipe.cost)
+	var status := "READY TO BUILD"
+	if _is_technology_built(recipe_id):
 		status = "INSTALLED"
 	elif not _has_recipe_materials(recipe):
 		status = "MISSING: %s" % _format_recipe_cost(recipe.cost)
 	return "%s  •  %s" % [status, recipe.description]
+
+func _create_radio_panel() -> void:
+	radio_panel = PanelContainer.new()
+	radio_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	radio_panel.offset_left = -390.0
+	radio_panel.offset_right = -20.0
+	radio_panel.offset_top = 72.0
+	radio_panel.offset_bottom = 184.0
+	radio_panel.visible = false
+	_style_glass_panel(radio_panel, Color(1.0, 0.70, 0.38))
+	hud_canvas.add_child(radio_panel)
+	status_label = Label.new()
+	status_label.custom_minimum_size = Vector2(330, 75)
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	status_label.add_theme_color_override("font_color", Color(1.0, 0.91, 0.73))
+	status_label.add_theme_font_size_override("font_size", 15)
+	radio_panel.add_child(status_label)
+
+func _toggle_radio() -> void:
+	radio_panel.visible = not radio_panel.visible
+	if radio_panel.visible:
+		status_label.text = story_message
+		if radio_panel.visible:
+			status_label.text = story_message
+
+func _create_pause_menu() -> void:
+	pause_overlay = ColorRect.new()
+	pause_overlay.color = Color(0.0, 0.012, 0.04, 0.91)
+	pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pause_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	pause_overlay.visible = false
+	pause_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	hud_canvas.add_child(pause_overlay)
+
+	pause_panel = PanelContainer.new()
+	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
+	pause_panel.offset_left = -390.0
+	pause_panel.offset_right = -22.0
+	pause_panel.offset_top = 20.0
+	pause_panel.offset_bottom = -20.0
+	_style_glass_panel(pause_panel, Color(0.38, 0.94, 0.91))
+	pause_overlay.add_child(pause_panel)
+	pause_scroll = ScrollContainer.new()
+	pause_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	pause_panel.add_child(pause_scroll)
+	pause_content = VBoxContainer.new()
+	pause_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pause_content.add_theme_constant_override("separation", 12)
+	pause_scroll.add_child(pause_content)
+	confirm_exit_dialog = ConfirmationDialog.new()
+	confirm_exit_dialog.title = "Save and exit?"
+	confirm_exit_dialog.dialog_text = "Save your current progress and close The Quiet Trench?"
+	confirm_exit_dialog.ok_button_text = "SAVE AND EXIT"
+	confirm_exit_dialog.confirmed.connect(_save_and_exit)
+	pause_overlay.add_child(confirm_exit_dialog)
+	_show_pause_menu()
+
+func _set_pause_menu(open: bool) -> void:
+	pause_menu_open = open
+	settings_panel_visible = false
+	if open:
+		crafting_overlay.visible = false
+		radio_panel.visible = false
+		_show_pause_menu()
+		pause_overlay.visible = true
+	else:
+		awaiting_keybinding = ""
+		pause_overlay.visible = false
+	get_tree().paused = open
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if open else Input.MOUSE_MODE_HIDDEN
+	_refresh_hud()
+
+func _show_pause_menu() -> void:
+	_clear_pause_content()
+	var title := Label.new()
+	title.text = "PAUSED"
+	title.add_theme_font_size_override("font_size", 25)
+	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.89))
+	pause_content.add_child(title)
+	_add_menu_button("CONTINUE", _set_pause_menu.bind(false))
+	_add_menu_button("SAVE GAME", _save_from_menu)
+	_add_menu_button("LOAD GAME", _load_from_menu)
+	_add_menu_button("SETTINGS", _show_settings.bind(true))
+	_add_menu_button("SAVE AND EXIT", _request_save_and_exit)
+	pause_message = Label.new()
+	pause_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pause_message.add_theme_color_override("font_color", Color(0.83, 0.91, 0.95))
+	pause_content.add_child(pause_message)
+
+func _show_settings(open: bool) -> void:
+	settings_panel_visible = open
+	if not open:
+		_show_pause_menu()
+		return
+	_clear_pause_content()
+	var heading := HBoxContainer.new()
+	pause_content.add_child(heading)
+	var title := Label.new()
+	title.text = "SETTINGS"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 23)
+	title.add_theme_color_override("font_color", Color(0.55, 1.0, 0.89))
+	heading.add_child(title)
+	var back := Button.new()
+	back.text = "BACK"
+	back.pressed.connect(_show_settings.bind(false))
+	heading.add_child(back)
+
+	_add_settings_label("RESOLUTION")
+	var resolution_option := OptionButton.new()
+	for resolution in RESOLUTIONS:
+		resolution_option.add_item("%d × %d" % [resolution.x, resolution.y])
+		resolution_option.set_item_metadata(resolution_option.item_count - 1, resolution)
+		if resolution == settings_data["resolution"]:
+			resolution_option.select(resolution_option.item_count - 1)
+	resolution_option.item_selected.connect(_on_resolution_selected.bind(resolution_option))
+	pause_content.add_child(resolution_option)
+
+	_add_settings_label("MASTER VOLUME")
+	var volume_slider := HSlider.new()
+	volume_slider.min_value = 0.0
+	volume_slider.max_value = 1.0
+	volume_slider.step = 0.01
+	volume_slider.value = settings_data["master_volume"]
+	volume_slider.value_changed.connect(_on_volume_changed)
+	pause_content.add_child(volume_slider)
+
+	_add_settings_label("AUTOSAVE")
+	var autosave_option := OptionButton.new()
+	var interval_labels := {
+		0: "Off",
+		30: "Every 30 seconds",
+		60: "Every 1 minute",
+		300: "Every 5 minutes",
+		600: "Every 10 minutes",
+		900: "Every 15 minutes",
+		1800: "Every 30 minutes"
+	}
+	for interval in AUTOSAVE_INTERVALS:
+		autosave_option.add_item(interval_labels[interval])
+		autosave_option.set_item_metadata(autosave_option.item_count - 1, interval)
+		if int(settings_data["autosave_interval"]) == interval:
+			autosave_option.select(autosave_option.item_count - 1)
+	autosave_option.item_selected.connect(_on_autosave_selected.bind(autosave_option))
+	pause_content.add_child(autosave_option)
+
+	var divider := HSeparator.new()
+	pause_content.add_child(divider)
+	_add_settings_label("KEY BINDINGS")
+	for action in KEY_BINDINGS:
+		var row := HBoxContainer.new()
+		pause_content.add_child(row)
+		var action_label := Label.new()
+		action_label.text = KEY_BINDINGS[action]
+		action_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(action_label)
+		var bind_button := Button.new()
+		bind_button.text = _action_key_text(action) if awaiting_keybinding != action else "PRESS A KEY"
+		bind_button.pressed.connect(_start_keybinding.bind(action))
+		row.add_child(bind_button)
+	var mouse_controls := Label.new()
+	mouse_controls.text = "Analyze: hold left mouse  ·  Tranquilizer: right mouse"
+	mouse_controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mouse_controls.add_theme_color_override("font_color", Color(0.67, 0.80, 0.86))
+	pause_content.add_child(mouse_controls)
+	settings_message = Label.new()
+	settings_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	settings_message.add_theme_color_override("font_color", Color(1.0, 0.70, 0.58))
+	pause_content.add_child(settings_message)
+
+func _clear_pause_content() -> void:
+	for child in pause_content.get_children():
+		child.queue_free()
+
+func _add_menu_button(caption: String, callback: Callable) -> void:
+	var button := Button.new()
+	button.text = caption
+	button.custom_minimum_size.y = 42.0
+	button.pressed.connect(callback)
+	pause_content.add_child(button)
+
+func _add_settings_label(caption: String) -> void:
+	var label := Label.new()
+	label.text = caption
+	label.add_theme_color_override("font_color", Color(0.58, 0.90, 0.94))
+	label.add_theme_font_size_override("font_size", 13)
+	pause_content.add_child(label)
+
+func _on_resolution_selected(index: int, option: OptionButton) -> void:
+	settings_data["resolution"] = option.get_item_metadata(index)
+	_apply_settings()
+	_save_settings()
+
+func _on_volume_changed(value: float) -> void:
+	settings_data["master_volume"] = value
+	var master_bus := AudioServer.get_bus_index("Master")
+	if master_bus >= 0:
+		AudioServer.set_bus_volume_linear(master_bus, value)
+	else:
+		push_error("The Master audio bus is missing.")
+	_save_settings()
+
+func _on_autosave_selected(index: int, option: OptionButton) -> void:
+	settings_data["autosave_interval"] = int(option.get_item_metadata(index))
+	autosave_elapsed = 0.0
+	_save_settings()
+
+func _start_keybinding(action: String) -> void:
+	awaiting_keybinding = action
+	_show_settings(true)
+
+func _apply_keybinding(key_event: InputEventKey) -> void:
+	var action := awaiting_keybinding
+	if action.is_empty():
+		return
+	for other_action in KEY_BINDINGS:
+		if other_action == action:
+			continue
+		for assigned_event in InputMap.action_get_events(other_action):
+			if assigned_event is InputEventKey and (assigned_event as InputEventKey).physical_keycode == key_event.physical_keycode:
+				settings_message.text = "That key is already assigned to %s." % KEY_BINDINGS[other_action]
+				return
+	InputMap.action_erase_events(action)
+	var new_event := InputEventKey.new()
+	new_event.physical_keycode = key_event.physical_keycode
+	InputMap.action_add_event(action, new_event)
+	awaiting_keybinding = ""
+	_save_settings()
+	_show_settings(true)
+
+func _action_key_text(action: String) -> String:
+	var keys: Array[String] = []
+	for assigned_event in InputMap.action_get_events(action):
+		if assigned_event is InputEventKey:
+			keys.append((assigned_event as InputEventKey).as_text_physical_keycode())
+	return " / ".join(keys)
+
+func _save_from_menu() -> void:
+	pause_message.text = "Game saved." if _save_game() else "Save failed. Check the game log for details."
+
+func _load_from_menu() -> void:
+	if not FileAccess.file_exists(save_path):
+		pause_message.text = "No saved game was found."
+		return
+	if not _load_game():
+		pause_message.text = "The saved game could not be loaded. Check the game log for details."
+		return
+	_apply_installed_techs()
+	autosave_elapsed = 0.0
+	_refresh_crafting_window()
+	_refresh_hud()
+	pause_message.text = "Saved progress loaded."
+
+func _request_save_and_exit() -> void:
+	confirm_exit_dialog.popup_centered()
+
+func _save_and_exit() -> void:
+	if _save_game():
+		get_tree().quit()
+	else:
+		pause_message.text = "Save failed; the game remains open."
 
 func _toggle_crafting_window(force_state: bool) -> void:
 	crafting_overlay.visible = force_state
@@ -749,6 +1232,9 @@ func _apply_installed_techs() -> void:
 		lamp_light.color = Color(0.65, 0.91, 1.0)
 		lamp_light.z_index = 6
 		diver.add_child(lamp_light)
+	if lamp_light != null:
+		lamp_light.visible = installed_techs.has("lamp")
+
 func _style_glass_panel(panel: PanelContainer, accent: Color) -> void:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.015, 0.075, 0.14, 0.84)
@@ -814,17 +1300,25 @@ func _refresh_hud() -> void:
 		prompt_label.get_parent().visible = false
 
 func _create_analyzer_beam() -> void:
-	analyzer_beam = Line2D.new()
-	analyzer_beam.width = 4.0
-	analyzer_beam.default_color = Color(0.31, 1.0, 0.85, 0.22)
-	analyzer_beam.begin_cap_mode = Line2D.LINE_CAP_ROUND
-	analyzer_beam.end_cap_mode = Line2D.LINE_CAP_ROUND
-	analyzer_beam.z_index = 7
-	add_child(analyzer_beam)
+	analyzer_cone = Polygon2D.new()
+	analyzer_cone.color = Color(0.25, 0.95, 0.89, 0.13)
+	analyzer_cone.z_index = 6
+	add_child(analyzer_cone)
+	analyzer_arc = Line2D.new()
+	analyzer_arc.width = 2.0
+	analyzer_arc.default_color = Color(0.42, 1.0, 0.91, 0.7)
+	analyzer_arc.z_index = 7
+	add_child(analyzer_arc)
+	analyzer_edges = Line2D.new()
+	analyzer_edges.width = 1.5
+	analyzer_edges.default_color = Color(0.42, 1.0, 0.91, 0.32)
+	analyzer_edges.z_index = 7
+	add_child(analyzer_edges)
+	analyzer_beam = analyzer_edges
 
 func _update_analyzer(delta: float) -> void:
 	if crafting_overlay.visible:
-		analyzer_beam.clear_points()
+		_clear_analyzer_beam()
 		scan_target = null
 		scan_progress = 0.0
 		scan_bar.value = 0.0
@@ -833,22 +1327,21 @@ func _update_analyzer(delta: float) -> void:
 
 	var start := diver.global_position + Vector2(0, -8)
 	var mouse_world := get_global_mouse_position()
-	var delta_to_mouse := mouse_world - start
-	var beam_length := minf(delta_to_mouse.length(), ANALYZER_RANGE)
-	var end := start + delta_to_mouse.normalized() * beam_length
-	if delta_to_mouse.length_squared() < 1.0:
-		end = start + Vector2.RIGHT * ANALYZER_RANGE
-	analyzer_beam.clear_points()
-	analyzer_beam.add_point(to_local(start))
-	analyzer_beam.add_point(to_local(end))
+	var direction := (mouse_world - start).normalized()
+	if direction.is_zero_approx():
+		direction = Vector2.RIGHT
+	_draw_analyzer_cone(start, direction)
 
 	var is_scanning := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	var target := _target_on_beam(start, end)
-	analyzer_beam.default_color = (
+	var target := _target_in_cone(start, direction)
+	var beam_color := (
 		Color(0.56, 1.0, 0.62, 0.83)
 		if is_scanning and target != null
-		else Color(0.31, 0.95, 1.0, 0.25)
+		else Color(0.42, 1.0, 0.91, 0.7)
 	)
+	analyzer_arc.default_color = beam_color
+	analyzer_edges.default_color = Color(beam_color.r, beam_color.g, beam_color.b, 0.34)
+	analyzer_cone.color = Color(beam_color.r, beam_color.g, beam_color.b, 0.12)
 	if not is_scanning or target == null or scan_cooldown > 0.0:
 		scan_target = null
 		scan_progress = 0.0
@@ -864,6 +1357,26 @@ func _update_analyzer(delta: float) -> void:
 		scan_target = target
 		scan_progress = 0.0
 	_advance_scan(target, delta)
+
+func _draw_analyzer_cone(start: Vector2, direction: Vector2) -> void:
+	var origin := to_local(start)
+	var arc_points := PackedVector2Array()
+	var polygon_points := PackedVector2Array([origin])
+	var half_angle := deg_to_rad(ANALYZER_HALF_ANGLE)
+	for index in range(17):
+		var ratio := float(index) / 16.0
+		var ray := direction.rotated(lerpf(-half_angle, half_angle, ratio))
+		var point := to_local(start + ray * ANALYZER_RANGE)
+		arc_points.append(point)
+		polygon_points.append(point)
+	analyzer_cone.polygon = polygon_points
+	analyzer_arc.points = arc_points
+	analyzer_edges.points = PackedVector2Array([origin, arc_points[0], origin, arc_points[-1]])
+
+func _clear_analyzer_beam() -> void:
+	analyzer_cone.polygon = PackedVector2Array()
+	analyzer_arc.clear_points()
+	analyzer_edges.clear_points()
 
 func _advance_scan(target: AlienLifeform, delta: float) -> void:
 	if target.harvested or target.scanned:
@@ -897,16 +1410,28 @@ func _complete_scan(target: AlienLifeform) -> void:
 	_refresh_hud()
 
 func _target_on_beam(start: Vector2, end: Vector2, require_unscanned := true) -> AlienLifeform:
+	var direction := (end - start).normalized()
+	if direction.is_zero_approx():
+		return null
+	return _target_in_cone(start, direction, require_unscanned)
+
+func _target_in_cone(start: Vector2, direction: Vector2, require_unscanned := true) -> AlienLifeform:
 	var target: AlienLifeform
-	var nearest_distance := 78.0
+	var nearest_score := INF
 	for lifeform in lifeforms:
 		if lifeform.harvested or (require_unscanned and lifeform.scanned):
 			continue
-		var point := Geometry2D.get_closest_point_to_segment(lifeform.global_position, start, end)
-		var distance := lifeform.global_position.distance_to(point)
-		if distance < nearest_distance:
-			nearest_distance = distance
-			target = lifeform
+		var offset := lifeform.global_position - start
+		var distance := offset.length()
+		var angle := absf(direction.angle_to(offset.normalized()))
+		if (
+			distance <= ANALYZER_RANGE + 78.0
+			and angle <= deg_to_rad(ANALYZER_HALF_ANGLE) + 0.035
+		):
+			var score := distance * cos(angle)
+			if score < nearest_score:
+				nearest_score = score
+				target = lifeform
 	return target
 
 func _fire_dart() -> void:
@@ -972,6 +1497,7 @@ func _interact() -> void:
 			story_message = pickup.story_text
 		else:
 			inventory[pickup.category] += pickup.amount
+			discovered_materials[pickup.category] = true
 			story_message = "%s recovered." % pickup.title
 		pickup.collect()
 	_save_game()
@@ -982,6 +1508,7 @@ func _sample_lifeform(lifeform: AlienLifeform) -> void:
 	if lifeform.harvested:
 		return
 	inventory[lifeform.resource_id] += lifeform.yield_amount
+	discovered_materials[lifeform.resource_id] = true
 	lifeform.collect()
 	story_message = "%s sampled: %s × %d. Scan its species to identify related technology." % [
 		lifeform.specimen_name,
@@ -995,7 +1522,7 @@ func _sample_lifeform(lifeform: AlienLifeform) -> void:
 func _craft_upgrade() -> void:
 	_toggle_crafting_window(true)
 
-func _save_game() -> void:
+func _save_game() -> bool:
 	var collected_ids: Array[String] = []
 	for pickup in pickups:
 		if pickup.collected:
@@ -1008,33 +1535,58 @@ func _save_game() -> void:
 		if lifeform.scanned:
 			scanned_lifeforms.append(lifeform.lifeform_id)
 	var data := {
-		"version": 2,
+		"version": 3,
 		"inventory": inventory,
+		"discovered_materials": discovered_materials,
 		"unlocked_recipes": unlocked_recipes,
 		"installed_techs": installed_techs,
 		"signal_found": signal_found,
 		"collected": collected_ids,
 		"collected_lifeforms": collected_lifeforms,
-		"scanned_lifeforms": scanned_lifeforms
+		"scanned_lifeforms": scanned_lifeforms,
+		"position": [diver.global_position.x, diver.global_position.y],
+		"oxygen": oxygen,
+		"health": health
 	}
 	var file := FileAccess.open(save_path, FileAccess.WRITE)
 	if file == null:
 		push_error("Could not save game: %s" % error_string(FileAccess.get_open_error()))
-		return
+		return false
 	file.store_string(JSON.stringify(data))
+	var error := file.get_error()
+	if error != OK:
+		push_error("Could not write save game: %s" % error_string(error))
+		return false
+	return true
 
-func _load_game() -> void:
+func _load_game() -> bool:
 	if not FileAccess.file_exists(save_path):
-		return
+		return false
 	var file := FileAccess.open(save_path, FileAccess.READ)
 	if file == null:
 		push_error("Could not read save game: %s" % error_string(FileAccess.get_open_error()))
-		return
+		return false
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	if not parsed is Dictionary or int(parsed.get("version", 0)) not in [1, 2]:
+	if not parsed is Dictionary or int(parsed.get("version", 0)) not in [1, 2, 3]:
 		push_error("Save file is invalid or uses an unsupported version.")
-		return
+		return false
 
+	for resource_id in inventory:
+		inventory[resource_id] = 0
+	discovered_materials.clear()
+	unlocked_recipes = {"pressure_weave": true}
+	installed_techs.clear()
+	signal_found = false
+	oxygen = STARTING_OXYGEN
+	health = 100.0
+	diver.global_position = Vector2(35, 90)
+	for pickup in pickups:
+		pickup.collected = false
+		pickup.icon.show()
+	for lifeform in lifeforms:
+		lifeform.harvested = false
+		lifeform.scanned = false
+		lifeform.icon.show()
 	var save_version := int(parsed.get("version", 0))
 	if save_version == 1:
 		inventory["driftmetal"] = maxi(0, int(parsed.get("metal", 0)))
@@ -1047,8 +1599,17 @@ func _load_game() -> void:
 			inventory[resource_id] = maxi(0, int(saved_inventory.get(resource_id, 0)))
 		unlocked_recipes = parsed.get("unlocked_recipes", {"pressure_weave": true})
 		installed_techs = parsed.get("installed_techs", {})
+		if save_version >= 3:
+			discovered_materials = parsed.get("discovered_materials", {})
 	signal_found = bool(parsed.get("signal_found", false))
 	suit_upgraded = installed_techs.has("pressure_weave")
+	if save_version >= 3:
+		var saved_position: Array = parsed.get("position", [diver.global_position.x, diver.global_position.y])
+		if saved_position.size() == 2:
+			diver.global_position = Vector2(float(saved_position[0]), float(saved_position[1]))
+		var loaded_capacity := 230.0 if installed_techs.has("deep_tank") else STARTING_OXYGEN
+		oxygen = clampf(float(parsed.get("oxygen", STARTING_OXYGEN)), 0.0, loaded_capacity)
+		health = clampf(float(parsed.get("health", 100.0)), 0.0, 100.0)
 	if signal_found:
 		story_message = "The old recording says the trench was here before the water."
 	elif suit_upgraded:
@@ -1064,3 +1625,7 @@ func _load_game() -> void:
 			lifeform.collect()
 		if lifeform.lifeform_id in scanned_lifeforms:
 			lifeform.scanned = true
+	for resource_id in inventory:
+		if int(inventory[resource_id]) > 0:
+			discovered_materials[resource_id] = true
+	return true

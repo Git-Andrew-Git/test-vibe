@@ -20,9 +20,12 @@ Tests use a lightweight built-in `SceneTree` script, with no external test frame
 
 ## Controls and gameplay conventions
 
-- WASD or arrow keys move; Shift boosts with fins; E samples or collects nearby objects; F toggles the field technology bench; hold left mouse to scan the lifeform in the analyzer beam; right-click to fire a tranquilizer dart.
-- Keep oxygen, pressure depth, resource counts, and upgrade state visible in the HUD and make interaction prompts contextual.
-- The escape pod refills oxygen. Scanning alien species reveals the technology they are associated with; sampling them yields their recipe ingredients. Keep recipe states explicit (unknown, missing resources, craftable, installed) and persist scans, materials, sampled life, upgrades, and story progress.
+- Configurable movement keys move; Shift boosts with fins; the interact and technology keys sample or collect objects and open the field bench; hold left mouse to scan life inside the fixed 30-degree, finite-range analyzer cone; right-click fires a tranquilizer dart; Escape opens the pause menu.
+- Keep oxygen and health visible; place the depth indicator top-center. Keep the latest radio message hidden unless the player opens Radio. Do not leave a control-key showcase on the in-game HUD.
+- The escape pod refills oxygen. Scanning alien species reveals the technology they are associated with; sampling them yields their recipe ingredients. Unknown recipes must not leak their name, full costs, description, or scan target. Previously discovered ingredients may reveal only those individual components. Use grey for unknown technologies and red for identified recipes that cannot be crafted for lack of materials.
+- The Escape menu includes continue, save, load, settings, and confirmed save-and-exit. Persist user settings separately from game saves: window resolution, master volume, autosave interval, and keyboard bindings. Autosave must honor the selected interval and can be disabled.
+- Keep the analyzer's visible cone and target detection in sync at 30 degrees and finite reach. Use only interactable alien life as fish/fauna; do not add decorative Earth-like fish that cannot be interacted with. Preserve a layered underwater landscape.
+- Save diver position, health, oxygen, inventory, discovered materials/recipes, sampled/scanned life, technologies, and story state; keep older save migration covered by tests.
 - Pressure equipment, scrubber tanks, fins, lamps, submersibles, weapons, and healing should have visible and testable in-game effects.
 - This is a non-monetary single-player game. Do not add wagering, cash-out, payment, accounts, or online dependencies.
 - Preserve the bright, illustrated marine palette: sunlit cyan shallows, saturated reef colors, and gradual indigo depth. Prefer project-owned art and documented CC0 assets; record asset source and license next to imported packs.

@@ -18,21 +18,27 @@ In VS Code, open **Terminal → Run Task...** and select **Godot: Launch game** 
 
 ## Controls
 
-- **WASD** or **arrow keys** — swim
+- **WASD** or **arrow keys** — swim (editable in Settings → Key Bindings)
 - **Shift** — boost while wearing Current-rider fins
 - **E** — collect salvage or sample nearby alien life
 - **F** — open or close the field technology bench
+- **Esc** — pause and open the game menu
 - **Mouse** — aim the analyzer beam
-- **Hold left mouse button** — scan an unstudied creature or plant in the beam
+- **Hold left mouse button** — scan an unstudied creature or plant within the analyzer's 30° cone (780-unit reach)
 - **Right mouse button** — fire the Dreamspore dart at a hostile target in range
+- **Radio** — open the latest radio message; story messages stay hidden until requested
 
 Return to the escape pod near the surface to refill oxygen and restore health. Begin by collecting three Driftmetal and one Lumen kelp to fabricate the known Pressure-weave suit. Scan each alien species to reveal its linked technology; sampled fauna and flora provide the recipe materials. The bench lists all technologies and shows which are unknown, short on materials, ready, or already built.
 
 Progression includes pressure protection, a larger scrubber tank, speed fins, a lamp, a visible pocket submersible, a tranquilizer, and consumable repair gel. Each upgrade opens up more of the trench and the story behind the signal.
 
+Undiscovered technologies do not reveal their names, scan targets, or recipes. Finding a recipe ingredient reveals only that known component; scanning the associated lifeform identifies the full technology. Unknown items are shown in grey and known recipes missing materials are highlighted red.
+
+The pause menu includes **Continue**, **Save Game**, **Load Game**, **Settings**, and **Save and Exit** (with a confirmation). Settings include 1024×576, 1280×720, 1600×900, and 1920×1080 resolutions, master volume, configurable autosave intervals (off, 30 seconds, 1, 5, 10, 15, or 30 minutes), and remappable keyboard actions. Autosave is enabled by default at one-minute intervals. Game progress and settings are stored separately under Godot's `user://` directory.
+
 ## Saves
 
-Inventory, scans, sampled specimens, crafted technologies, and story progress are saved locally in Godot's `user://` data directory as `quiet_trench_save.json`. Existing version 1 saves are migrated automatically. Save files are not part of the project folder.
+Inventory, diver position, health, oxygen, scans, sampled specimens, crafted technologies, and story progress are saved locally in Godot's `user://` data directory as `quiet_trench_save.json`. Existing version 1 and version 2 saves are migrated automatically. User preferences are stored separately in `quiet_trench_settings.json`. Save files are not part of the project folder.
 
 ## Headless checks
 
