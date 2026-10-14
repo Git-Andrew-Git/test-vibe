@@ -107,7 +107,8 @@ const SPECIES := [
 		"depth": Vector2(270, 0),
 		"count": 3,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": false,
+		"ability": "oxygen_pulse"
 	},
 	{
 		"id": "ribbon_glider",
@@ -119,7 +120,8 @@ const SPECIES := [
 		"depth": Vector2(390, 500),
 		"count": 3,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": false,
+		"ability": "current_burst"
 	},
 	{
 		"id": "glassback",
@@ -131,7 +133,8 @@ const SPECIES := [
 		"depth": Vector2(570, 850),
 		"count": 3,
 		"yield": 1,
-		"aggressive": false
+		"aggressive": false,
+		"ability": "shell_guard"
 	},
 	{
 		"id": "riftstalker",
@@ -143,7 +146,8 @@ const SPECIES := [
 		"depth": Vector2(760, 1350),
 		"count": 2,
 		"yield": 1,
-		"aggressive": true
+		"aggressive": true,
+		"ability": "electric_lunge"
 	},
 	{
 		"id": "ember_kelp",
@@ -156,7 +160,8 @@ const SPECIES := [
 		"count": 4,
 		"yield": 1,
 		"aggressive": false,
-		"flora_behavior": "sway"
+		"flora_behavior": "sway",
+		"ability": "warm_current"
 	},
 	{
 		"id": "veil_moss",
@@ -169,7 +174,8 @@ const SPECIES := [
 		"count": 4,
 		"yield": 1,
 		"aggressive": false,
-		"flora_behavior": "creep"
+		"flora_behavior": "creep",
+		"ability": "healing_spores"
 	},
 	{
 		"id": "spire_coral",
@@ -182,7 +188,8 @@ const SPECIES := [
 		"count": 4,
 		"yield": 1,
 		"aggressive": true,
-		"flora_behavior": "stalk"
+		"flora_behavior": "stalk",
+		"ability": "vine_snare"
 	},
 	{
 		"id": "lantern_bloom",
@@ -195,7 +202,8 @@ const SPECIES := [
 		"count": 4,
 		"yield": 1,
 		"aggressive": false,
-		"flora_behavior": "pulse"
+		"flora_behavior": "pulse",
+		"ability": "lure_flash"
 	}
 ]
 
@@ -239,6 +247,10 @@ var prompt_label: Label
 var oxygen_bar: ProgressBar
 var depth_label: Label
 var oxygen_empty_time := 0.0
+var vehicle_bar: ProgressBar
+var vehicle_caption: Label
+var hover_panel: PanelContainer
+var hover_label: Label
 var world_tint: CanvasModulate
 var oxygen_fill_style: StyleBoxFlat
 var health_bar: ProgressBar
@@ -274,6 +286,7 @@ var radio_button: Button
 var radio_panel: PanelContainer
 var pause_overlay: ColorRect
 var pause_panel: PanelContainer
+var menu_pattern: TextureRect
 var pause_scroll: ScrollContainer
 var pause_content: VBoxContainer
 var pause_message: Label
@@ -444,15 +457,38 @@ func _process(delta: float) -> void:
 	weather_label.modulate = Color(0.72, 0.89, 0.95, 0.55) if ocean_world.weather == "MIST" else Color.WHITE
 	if diver.global_position.y <= 145.0:
 		oxygen = minf(oxygen_capacity, oxygen + 34.0 * delta)
+		if diver.has_submersible:
+			diver.vehicle_health = minf(100.0, diver.vehicle_health + 10.0 * delta)
 		oxygen_empty_time = 0.0
 	else:
-		oxygen = maxf(0.0, oxygen - (1.8 + depth * 0.006) * delta)
+		var over_depth := maxf(0.0, depth - depth_limit)
+		var oxygen_stress := 1.0 + over_depth * 0.018
+		oxygen = maxf(0.0, oxygen - (1.8 + depth * 0.006) * oxygen_stress * delta)
+		if over_depth > 0.0:
+			if diver.has_submersible and diver.vehicle_health > 0.0:
+				diver.vehicle_health = maxf(
+					0.0,
+					diver.vehicle_health - (1.5 + over_depth * 0.012) * delta
+				)
+				if diver.vehicle_health <= 0.0:
+					health = maxf(0.0, health - 12.0 * delta)
+			else:
+				var pressure_damage := (1.5 + over_depth * 0.012) * delta
+				health = maxf(
+					0.0,
+					health - pressure_damage * (0.4 if diver.shield_time > 0.0 else 1.0)
+				)
 
 	for lifeform in lifeforms:
-		if lifeform.harvested or not lifeform.aggressive or lifeform.stun_remaining > 0.0:
+		if lifeform.harvested:
 			continue
-		if diver.global_position.distance_to(lifeform.global_position) < 100.0:
-			health = maxf(0.0, health - 20.0 * delta)
+		var ability_distance := diver.global_position.distance_to(lifeform.global_position)
+		_update_lifeform_ability(lifeform, ability_distance)
+		if lifeform.aggressive and lifeform.stun_remaining <= 0.0 and ability_distance < 100.0:
+			health = maxf(
+				0.0,
+				health - 20.0 * delta * (0.4 if diver.shield_time > 0.0 else 1.0)
+			)
 			story_message = "%s is striking! Scan it or escape." % lifeform.specimen_name
 
 	if oxygen <= 0.0 and diver.global_position.y > 145.0:
@@ -470,6 +506,50 @@ func _process(delta: float) -> void:
 	_update_analyzer(delta)
 	_refresh_hud()
 	_update_inventory_tooltip_position()
+	_update_world_hover()
+
+func _update_lifeform_ability(lifeform: AlienLifeform, distance: float) -> void:
+	if (
+		lifeform.ability in ["electric_lunge", "vine_snare"]
+		or lifeform.stun_remaining > 0.0
+		or lifeform.ability_cooldown > 0.0
+		or distance > 225.0
+	):
+		return
+	match lifeform.ability:
+		"oxygen_pulse":
+			oxygen = minf(oxygen_capacity, oxygen + 28.0)
+			story_message = "A Moon-jelly releases a clean oxygen pulse."
+			lifeform.ability_cooldown = 13.0
+		"current_burst":
+			diver.current_boost_time = 4.0
+			story_message = "A Ribbon glider's current carries you forward."
+			lifeform.ability_cooldown = 12.0
+		"shell_guard":
+			diver.shield_time = 5.0
+			story_message = "A Glassback wraps you in a protective resonance."
+			lifeform.ability_cooldown = 16.0
+		"warm_current":
+			oxygen = minf(oxygen_capacity, oxygen + 16.0)
+			story_message = "Ember kelp warms the water and eases your breathing."
+			lifeform.ability_cooldown = 15.0
+		"healing_spores":
+			health = minf(100.0, health + 12.0)
+			story_message = "Veil moss releases restorative spores."
+			lifeform.ability_cooldown = 16.0
+		"lure_flash":
+			for threat in lifeforms:
+				if (
+					threat.aggressive
+					and not threat.harvested
+					and threat.global_position.distance_to(lifeform.global_position) < 270.0
+				):
+					threat.stun()
+			story_message = "Lantern bloom's flash disorients nearby hunters."
+			lifeform.ability_cooldown = 14.0
+		_:
+			return
+	lifeform.activate_ability()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if awaiting_keybinding != "":
@@ -553,6 +633,7 @@ func _create_lifeforms() -> void:
 			lifeform.recipe_id = species_data.recipe
 			lifeform.yield_amount = species_data["yield"]
 			lifeform.aggressive = species_data.aggressive
+			lifeform.ability = species_data.get("ability", "")
 			lifeform.flora_behavior = species_data.get("flora_behavior", "")
 			lifeform.hunter_target = diver
 			lifeform.sprite_texture = atlas
@@ -628,6 +709,40 @@ func _create_hud() -> void:
 	oxygen_fill_style.set_corner_radius_all(9)
 	oxygen_bar.add_theme_stylebox_override("fill", oxygen_fill_style)
 	canvas.add_child(oxygen_bar)
+	vehicle_bar = ProgressBar.new()
+	vehicle_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	vehicle_bar.anchor_left = 0.5
+	vehicle_bar.anchor_right = 0.5
+	vehicle_bar.offset_left = -130.0
+	vehicle_bar.offset_right = 130.0
+	vehicle_bar.offset_top = 94.0
+	vehicle_bar.offset_bottom = 103.0
+	vehicle_bar.max_value = 100.0
+	vehicle_bar.show_percentage = false
+	vehicle_bar.visible = false
+	var vehicle_track := StyleBoxFlat.new()
+	vehicle_track.bg_color = Color(0.015, 0.105, 0.17, 0.96)
+	vehicle_track.set_corner_radius_all(6)
+	vehicle_bar.add_theme_stylebox_override("background", vehicle_track)
+	var vehicle_fill := StyleBoxFlat.new()
+	vehicle_fill.bg_color = Color(0.32, 0.84, 1.0)
+	vehicle_fill.set_corner_radius_all(5)
+	vehicle_bar.add_theme_stylebox_override("fill", vehicle_fill)
+	canvas.add_child(vehicle_bar)
+	vehicle_caption = Label.new()
+	vehicle_caption.text = "POD HULL"
+	vehicle_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vehicle_caption.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	vehicle_caption.anchor_left = 0.5
+	vehicle_caption.anchor_right = 0.5
+	vehicle_caption.offset_left = -130.0
+	vehicle_caption.offset_right = 130.0
+	vehicle_caption.offset_top = 77.0
+	vehicle_caption.offset_bottom = 91.0
+	vehicle_caption.add_theme_font_size_override("font_size", 9)
+	vehicle_caption.add_theme_color_override("font_color", Color(0.65, 0.88, 0.96))
+	vehicle_caption.visible = false
+	canvas.add_child(vehicle_caption)
 	weather_label = Label.new()
 	weather_label.position = Vector2(22.0, 22.0)
 	weather_label.add_theme_color_override("font_color", Color(0.79, 0.94, 0.95))
@@ -647,6 +762,16 @@ func _create_hud() -> void:
 	health_bar.add_theme_stylebox_override("fill", health_fill)
 	health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas.add_child(health_bar)
+	hover_panel = PanelContainer.new()
+	hover_panel.visible = false
+	hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hover_panel.z_index = 20
+	_style_glass_panel(hover_panel, Color(0.38, 0.92, 0.87))
+	hover_label = Label.new()
+	hover_label.add_theme_font_size_override("font_size", 13)
+	hover_label.add_theme_color_override("font_color", Color(0.88, 1.0, 0.98))
+	hover_panel.add_child(hover_label)
+	canvas.add_child(hover_panel)
 	_create_quick_slots(canvas)
 
 	var radio_control := Button.new()
@@ -1289,13 +1414,15 @@ func _create_pause_menu() -> void:
 	pause_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
 	hud_canvas.add_child(pause_overlay)
 
+	menu_pattern = TextureRect.new()
+	menu_pattern.texture = MENU_OCEAN_ART
+	menu_pattern.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	menu_pattern.stretch_mode = TextureRect.STRETCH_SCALE
+	menu_pattern.modulate = Color(0.72, 0.90, 0.95, 0.80)
+	menu_pattern.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pause_overlay.add_child(menu_pattern)
 	pause_panel = PanelContainer.new()
-	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	pause_panel.offset_left = 22.0
-	pause_panel.offset_right = 416.0
-	pause_panel.offset_top = 22.0
-	pause_panel.offset_bottom = -22.0
-	_style_glass_panel(pause_panel, Color(0.38, 0.94, 0.91))
+	_style_menu_panel(pause_panel)
 	pause_overlay.add_child(pause_panel)
 	pause_scroll = ScrollContainer.new()
 	pause_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1328,13 +1455,9 @@ func _set_pause_menu(open: bool) -> void:
 	_refresh_hud()
 
 func _show_pause_menu() -> void:
-	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	pause_panel.offset_left = 22.0
-	pause_panel.offset_right = 416.0
-	pause_panel.offset_top = 22.0
-	pause_panel.offset_bottom = -22.0
+	_layout_menu_panel(false)
 	_clear_pause_content()
-	_add_menu_banner(pause_content, "UNDER PRESSURE", 230.0)
+	_add_menu_title(pause_content, "UNDER PRESSURE")
 	var subtitle := Label.new()
 	subtitle.text = "DIVE MENU"
 	subtitle.add_theme_font_size_override("font_size", 14)
@@ -1353,20 +1476,11 @@ func _show_pause_menu() -> void:
 func _show_settings(open: bool) -> void:
 	settings_panel_visible = open
 	if not open:
-		pause_panel.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-		pause_panel.offset_left = 22.0
-		pause_panel.offset_right = 416.0
-		pause_panel.offset_top = 22.0
-		pause_panel.offset_bottom = -22.0
 		_show_pause_menu()
 		return
-	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	pause_panel.offset_left = -470.0
-	pause_panel.offset_right = 470.0
-	pause_panel.offset_top = -270.0
-	pause_panel.offset_bottom = 270.0
+	_layout_menu_panel(true)
 	_clear_pause_content()
-	_add_menu_banner(pause_content, "UNDER PRESSURE", 150.0)
+	_add_menu_title(pause_content, "FIELD SETTINGS")
 	var heading := HBoxContainer.new()
 	pause_content.add_child(heading)
 	var title := Label.new()
@@ -1454,28 +1568,41 @@ func _show_settings(open: bool) -> void:
 	settings_message.add_theme_color_override("font_color", Color(1.0, 0.70, 0.58))
 	pause_content.add_child(settings_message)
 
-func _add_menu_banner(parent: Control, title_text: String, height: float) -> void:
-	var banner := TextureRect.new()
-	banner.texture = MENU_OCEAN_ART
-	banner.custom_minimum_size = Vector2(0.0, height)
-	banner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	banner.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	parent.add_child(banner)
+func _layout_menu_panel(settings_open: bool) -> void:
+	pause_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	menu_pattern.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	var half_width := 465.0 if settings_open else 275.0
+	var half_height := 275.0 if settings_open else 300.0
+	pause_panel.offset_left = -half_width
+	pause_panel.offset_right = half_width
+	pause_panel.offset_top = -half_height
+	pause_panel.offset_bottom = half_height
+	menu_pattern.offset_left = pause_panel.offset_left
+	menu_pattern.offset_right = pause_panel.offset_right
+	menu_pattern.offset_top = pause_panel.offset_top
+	menu_pattern.offset_bottom = pause_panel.offset_bottom
+
+func _style_menu_panel(panel: PanelContainer) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.005, 0.025, 0.065, 0.36)
+	style.border_color = Color(0.38, 0.95, 1.0, 0.98)
+	style.set_border_width_all(3)
+	style.set_corner_radius_all(24)
+	style.content_margin_left = 24.0
+	style.content_margin_right = 24.0
+	style.content_margin_top = 20.0
+	style.content_margin_bottom = 20.0
+	style.shadow_color = Color(0.12, 0.80, 0.91, 0.38)
+	style.shadow_size = 18
+	panel.add_theme_stylebox_override("panel", style)
+
+func _add_menu_title(parent: Control, title_text: String) -> void:
 	var title := Label.new()
 	title.text = title_text
-	title.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	title.offset_left = 14.0
-	title.offset_top = -48.0
-	title.offset_right = -8.0
-	title.offset_bottom = -12.0
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 25)
-	title.add_theme_color_override("font_color", Color(0.88, 1.0, 0.96))
-	title.add_theme_color_override("font_shadow_color", Color(0.0, 0.08, 0.16, 0.85))
-	title.add_theme_constant_override("shadow_offset_x", 2)
-	title.add_theme_constant_override("shadow_offset_y", 2)
-	banner.add_child(title)
+	title.add_theme_color_override("font_color", Color(0.75, 1.0, 0.98))
+	parent.add_child(title)
 
 func _clear_pause_content() -> void:
 	for child in pause_content.get_children():
@@ -1707,7 +1834,7 @@ func _refresh_hud() -> void:
 		return
 
 	var depth := maxf(0.0, diver.global_position.y - 77.0)
-	depth_label.text = "DEPTH  %03d m     LIMIT  %03d m" % [roundi(depth), roundi(depth_limit)]
+	depth_label.text = "DEPTH  %03d m     RATING  %03d m" % [roundi(depth), roundi(depth_limit)]
 	oxygen_bar.value = oxygen
 	oxygen_bar.max_value = oxygen_capacity
 	oxygen_fill_style.bg_color = (
@@ -1720,6 +1847,9 @@ func _refresh_hud() -> void:
 	health_bar.value = health
 	var player_screen_position := get_viewport().get_canvas_transform() * diver.global_position
 	health_bar.position = player_screen_position + Vector2(-34.0, health_bar_offset.y)
+	vehicle_bar.visible = diver.has_submersible
+	vehicle_caption.visible = diver.has_submersible
+	vehicle_bar.value = diver.vehicle_health
 	_refresh_quick_slots()
 	status_label.text = story_message
 
@@ -1732,8 +1862,10 @@ func _refresh_hud() -> void:
 		prompt_label.text = "[E]  Collect %s" % nearby_pickup.title
 	elif diver.global_position.y <= 145.0 and absf(diver.global_position.x + 185.0) <= 130.0:
 		prompt_label.text = "[F]  Open field technology bench"
+	elif depth > depth_limit:
+		prompt_label.text = "PRESSURE STRESS  Oxygen use and hull damage are increasing."
 	elif depth >= depth_limit - 2.0:
-		prompt_label.text = "Pressure wall. Craft the pressure weave at the surface pod."
+		prompt_label.text = "PRESSURE RATING REACHED  Deeper water drains oxygen faster."
 	elif oxygen_empty_time > 0.0:
 		prompt_label.text = "OXYGEN DEPLETED  Emergency return in progress..."
 	elif health <= 25.0:
@@ -1749,6 +1881,44 @@ func _update_hint_visibility() -> void:
 	var show_hints := bool(settings_data.get("show_gameplay_hints", false))
 	for hint_panel in hint_panels:
 		hint_panel.visible = show_hints and not crafting_overlay.visible and not inventory_open
+
+func _update_world_hover() -> void:
+	if get_tree().paused or inventory_open or crafting_overlay.visible:
+		hover_panel.visible = false
+		return
+	var mouse_world := get_global_mouse_position()
+	var hover_name := ""
+	var nearest_distance := INF
+	for lifeform in lifeforms:
+		if lifeform.harvested:
+			continue
+		var distance := mouse_world.distance_to(lifeform.global_position)
+		if distance < 66.0 and distance < nearest_distance:
+			nearest_distance = distance
+			hover_name = lifeform.specimen_name if lifeform.scanned else "Unknown"
+	for pickup in pickups:
+		if pickup.collected:
+			continue
+		var distance := mouse_world.distance_to(pickup.global_position)
+		if distance < 44.0 and distance < nearest_distance:
+			nearest_distance = distance
+			var is_known_pickup := (
+				discovered_materials.has(pickup.category)
+				or (pickup.category == "story" and signal_found)
+			)
+			hover_name = pickup.title if is_known_pickup else "Unknown"
+	if hover_name.is_empty():
+		hover_panel.visible = false
+		return
+	hover_label.text = hover_name
+	hover_panel.visible = true
+	var mouse_screen := get_viewport().get_mouse_position() + Vector2(18.0, 18.0)
+	var viewport_size := get_viewport_rect().size
+	var tooltip_size := hover_panel.size
+	hover_panel.position = Vector2(
+		minf(mouse_screen.x, viewport_size.x - tooltip_size.x - 8.0),
+		minf(mouse_screen.y, viewport_size.y - tooltip_size.y - 8.0)
+	)
 
 func _create_analyzer_beam() -> void:
 	analyzer_beam = MeshInstance2D.new()
@@ -1944,6 +2114,7 @@ func _interact() -> void:
 		if diver.global_position.distance_to(Vector2(-185, 88)) < 130.0:
 			oxygen = oxygen_capacity
 			health = 100.0
+			diver.vehicle_health = 100.0
 			story_message = "Escape pod systems restore oxygen and stabilize your vitals."
 			_refresh_hud()
 			return
@@ -2006,7 +2177,8 @@ func _save_game() -> bool:
 		"scanned_lifeforms": scanned_lifeforms,
 		"position": [diver.global_position.x, diver.global_position.y],
 		"oxygen": oxygen,
-		"health": health
+		"health": health,
+		"vehicle_health": diver.vehicle_health
 	}
 	var file := FileAccess.open(save_path, FileAccess.WRITE)
 	if file == null:
@@ -2070,6 +2242,7 @@ func _load_game() -> bool:
 		var loaded_capacity := 230.0 if installed_techs.has("deep_tank") else STARTING_OXYGEN
 		oxygen = clampf(float(parsed.get("oxygen", STARTING_OXYGEN)), 0.0, loaded_capacity)
 		health = clampf(float(parsed.get("health", 100.0)), 0.0, 100.0)
+		diver.vehicle_health = clampf(float(parsed.get("vehicle_health", 100.0)), 0.0, 100.0)
 	if signal_found:
 		story_message = "The old recording says the trench was here before the water."
 	elif suit_upgraded:

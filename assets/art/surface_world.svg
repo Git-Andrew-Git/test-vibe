@@ -1,46 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="1000" viewBox="0 0 3000 1000">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
   <defs>
     <linearGradient id="sky" x2="0" y2="1">
-      <stop stop-color="#28659a"/>
-      <stop offset=".48" stop-color="#5bafc2"/>
-      <stop offset="1" stop-color="#c2eddf"/>
+      <stop stop-color="#12385f"/>
+      <stop offset=".48" stop-color="#247ba0"/>
+      <stop offset="1" stop-color="#69c8c1"/>
     </linearGradient>
-    <linearGradient id="island" x2="0" y2="1">
-      <stop stop-color="#4c998e"/>
-      <stop offset="1" stop-color="#20516c"/>
-    </linearGradient>
-    <linearGradient id="shore" x2="0" y2="1">
-      <stop stop-color="#8cd7bd"/>
-      <stop offset="1" stop-color="#3b8f9c"/>
-    </linearGradient>
-    <radialGradient id="dawn">
-      <stop stop-color="#fff2ba" stop-opacity=".88"/>
-      <stop offset=".28" stop-color="#ffe4aa" stop-opacity=".42"/>
-      <stop offset="1" stop-color="#b4eaff" stop-opacity="0"/>
+    <radialGradient id="glow">
+      <stop stop-color="#fff2b5" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#b7f7ed" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="3000" height="1000" fill="url(#sky)"/>
-  <ellipse cx="2050" cy="380" rx="560" ry="450" fill="url(#dawn)"/>
-  <circle cx="2050" cy="390" r="76" fill="#fff3c5" opacity=".92"/>
-  <g fill="#dff7ed" opacity=".66">
-    <path d="M175 270q14-49 66-40 19-67 83-38 22-50 81-27 37 6 43 51 63-4 68 49Z"/>
-    <path d="M825 355q15-46 64-38 17-62 78-35 20-48 76-25 35 5 41 47 59-4 64 51Z"/>
-    <path d="M2330 250q13-43 60-36 17-58 73-33 19-45 71-24 34 5 39 45 56-4 61 48Z"/>
-  </g>
-  <path d="M0 697q228-111 432-31t363-69q225-166 453-30t382 19q181-96 354-36t377-58q243-105 639 61v258H0Z" fill="#345d71" opacity=".78"/>
-  <path d="M0 764q257-84 498-14t390-68q223-125 440-27t399 17q220-80 400-15t357-51q268-103 516 49v236H0Z" fill="url(#island)"/>
-  <g fill="#276f72" opacity=".95">
-    <path d="M120 773q4-118 42-198 10 85 14 116 33-101 73-151 13 99 1 170 50-71 101-92-41 86-44 160Z"/>
-    <path d="M545 744q8-116 47-183 6 74 11 116 40-105 77-130 7 76 0 150 49-69 93-80-36 75-37 127Z"/>
-    <path d="M1286 739q0-110 42-190 11 72 15 112 33-93 75-141 9 94 0 162 47-73 95-94-36 91-38 161Z"/>
-    <path d="M2435 760q7-116 48-188 9 79 13 117 37-102 77-141 8 91 0 159 49-68 94-84-38 81-40 137Z"/>
-  </g>
-  <path d="M0 860q197-43 373 7t371-14q216-69 429 6t426-6q208-69 414 9t398-9q301-67 589 7v140H0Z" fill="url(#shore)"/>
-  <g fill="#f4dca5" opacity=".8">
-    <path d="M0 888q186-28 343 5t330-11q168-31 312 19t299-12v111H0Z"/>
-    <path d="M2020 875q163-33 304 6t302-8q202-43 374 19v108h-980Z"/>
-  </g>
-  <g fill="#e6fff4" opacity=".45">
-    <path d="M0 958q180-9 365 4t370-4q183-7 369 5t372-3q185-8 370 6t385-3q185-8 369 7v30H0Z"/>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <ellipse cx="800" cy="340" rx="430" ry="390" fill="url(#glow)"/>
+  <g fill="#fff8dc" opacity=".26">
+    <circle cx="124" cy="133" r="2"/><circle cx="276" cy="232" r="2"/>
+    <circle cx="438" cy="98" r="1.5"/><circle cx="627" cy="182" r="2"/>
+    <circle cx="928" cy="107" r="1.5"/><circle cx="1106" cy="221" r="2"/>
+    <circle cx="1427" cy="151" r="2"/><circle cx="1518" cy="313" r="1.5"/>
+    <circle cx="364" cy="412" r="1.5"/><circle cx="1289" cy="455" r="2"/>
   </g>
 </svg>

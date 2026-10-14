@@ -34,11 +34,42 @@ func _run() -> void:
 		and world.get_node_or_null("WestCaveCollision") != null,
 		"Solid underwater terrain includes a traversable cave and obstacle formations."
 	)
+	var scattered_reef: Polygon2D = world.get_node("ScatteredReef0")
+	var reef_bounds := Rect2(scattered_reef.polygon[0], Vector2.ZERO)
+	for reef_point in scattered_reef.polygon:
+		reef_bounds = reef_bounds.expand(reef_point)
+	_expect(
+		scattered_reef.polygon.size() >= 6
+		and reef_bounds.size.x > 50.0 and reef_bounds.size.x < 350.0
+		and reef_bounds.size.y > 40.0 and reef_bounds.size.y < 260.0,
+		"Scattered underwater obstacles have bounded, irregular randomized shapes."
+	)
 	_expect(world.WATER_SURFACE_Y == 0.0, "The animated ocean surface has a defined waterline.")
+	var above_water_creatures := false
+	for world_child in world.get_children():
+		if world_child is Sprite2D and (world_child as Sprite2D).position.y < world.WATER_SURFACE_Y:
+			above_water_creatures = true
+	_expect(
+		not above_water_creatures
+		and world.SKY_WIDTH == world.WORLD_WIDTH
+		and world.SKY_TOP_Y < -2500.0,
+		"The sky fills the same horizontal span as the ocean and contains no surface creatures or plants."
+	)
 	_expect(game.diver.diver_sprite.texture != null, "The smaller diver uses the illustrated sprite.")
 	_expect(
 		not game.diver.helmet_sprite.visible and not game.diver.fins_sprite.visible,
 		"The diver begins without a helmet or fins."
+	)
+	_expect(
+		game.diver.arm_rigs.size() == 2 and game.diver.leg_rigs.size() == 2,
+		"The diver has a slim torso with separately animated visible arms, hands, legs, and feet."
+	)
+	var first_arm_rotation: float = game.diver.arm_rigs[0].rotation
+	for _frame in range(8):
+		game.diver._physics_process(0.016)
+	_expect(
+		not is_equal_approx(game.diver.arm_rigs[0].rotation, first_arm_rotation),
+		"The diver cycles through a gentle in-place swim animation."
 	)
 	_expect(game.lifeforms.size() == 27, "All eight alien species have interactable specimens.")
 	_expect(game.pickups.size() == 10, "The world contains salvage and a story pickup.")
@@ -76,6 +107,23 @@ func _run() -> void:
 		and world.daylight > 0.98,
 		"The ocean starts in daylight and supports day-night and multiple weather cycles."
 	)
+	var saved_swimmer_position: Vector2 = game.diver.global_position
+	Input.action_press("move_up")
+	var highest_breach_position: float = saved_swimmer_position.y
+	game.diver.global_position = Vector2(0.0, -15.0)
+	for _frame in range(65):
+		game.diver._physics_process(0.016)
+		highest_breach_position = minf(highest_breach_position, game.diver.global_position.y)
+	Input.action_release("move_up")
+	_expect(
+		highest_breach_position < -28.0 and game.diver.global_position.y > highest_breach_position,
+		"Surface buoyancy briefly lifts the diver before returning them beneath the water."
+	)
+	Input.action_press("move_left")
+	game.diver._physics_process(0.016)
+	Input.action_release("move_left")
+	_expect(game.diver.swim_rig.scale.x < 0.0, "Directional swimming turns the diver toward their travel.")
+	game.diver.global_position = saved_swimmer_position
 	var hud_labels: Array[Node] = game.hud_canvas.find_children("*", "Label", true, false)
 	var has_title_panel := false
 	for hud_label in hud_labels:
@@ -110,6 +158,95 @@ func _run() -> void:
 	game.diver.global_position = Vector2(0, 577)
 	game._process(0.016)
 	_expect(game.world_tint.color != Color.WHITE, "Water atmosphere darkens with depth.")
+	var original_moon_position: Vector2 = _first_lifeform(game, "moon_jelly").global_position
+	var hover_target: AlienLifeform = _first_lifeform(game, "moon_jelly")
+	hover_target.global_position = game.get_global_mouse_position()
+	hover_target.scanned = false
+	game._update_world_hover()
+	_expect(game.hover_panel.visible and game.hover_label.text == "Unknown",
+		"Hovering an unscanned alien lifeform identifies it only as Unknown."
+	)
+	hover_target.scanned = true
+	game._update_world_hover()
+	_expect(game.hover_label.text == hover_target.specimen_name, "Hovering a scanned lifeform reveals its name.")
+	hover_target.global_position = original_moon_position
+	hover_target.scanned = false
+	game.hover_panel.visible = false
+	game.depth_limit = 500.0
+	game.diver.depth_limit = 500.0
+	game.diver.global_position = Vector2(1500.0, 577.0)
+	game.oxygen = game.oxygen_capacity
+	game._process(1.0)
+	var oxygen_at_rating: float = game.oxygen
+	game.oxygen = game.oxygen_capacity
+	game.diver.global_position.y = 977.0
+	game.diver._physics_process(0.016)
+	_expect(
+		game.diver.global_position.y > game.depth_limit + 77.0,
+		"Swimming past the suit rating is not clamped by the diver controller."
+	)
+	game._process(1.0)
+	_expect(
+		game.oxygen < oxygen_at_rating and game.health < 100.0,
+		"Passing the depth rating drains oxygen faster and causes pressure damage instead of blocking movement."
+	)
+	game.health = 100.0
+	game.oxygen = game.oxygen_capacity
+	game.diver.has_submersible = true
+	game.diver.vehicle_health = 100.0
+	game.diver.global_position = Vector2(1500.0, 977.0)
+	game._process(1.0)
+	_expect(
+		game.diver.vehicle_health < 100.0,
+		"Exceeding the pressure pod's rating damages vehicle health."
+	)
+	game.diver.has_submersible = false
+	game.diver.vehicle_health = 100.0
+	game.depth_limit = game.STARTING_DEPTH_LIMIT
+	game.diver.depth_limit = game.STARTING_DEPTH_LIMIT
+	game.health = 100.0
+	game.diver.global_position = Vector2(0.0, 577.0)
+	var moon_jelly_for_ability: AlienLifeform = _first_lifeform(game, "moon_jelly")
+	var moon_jelly_home: Vector2 = moon_jelly_for_ability.global_position
+	moon_jelly_for_ability.global_position = game.diver.global_position + Vector2(20.0, 0.0)
+	moon_jelly_for_ability.ability_cooldown = 0.0
+	game.oxygen = 50.0
+	game._update_lifeform_ability(moon_jelly_for_ability, 20.0)
+	_expect(
+		game.oxygen > 50.0 and moon_jelly_for_ability.ability_active_time > 0.0,
+		"Moon-jellies visibly pulse oxygen to nearby divers."
+	)
+	moon_jelly_for_ability.global_position = moon_jelly_home
+	var ribbon: AlienLifeform = _first_lifeform(game, "ribbon_glider")
+	ribbon.global_position = game.diver.global_position + Vector2(20.0, 0.0)
+	ribbon.ability_cooldown = 0.0
+	game._update_lifeform_ability(ribbon, 20.0)
+	_expect(game.diver.current_boost_time > 0.0, "Ribbon gliders create a visible, helpful speed current.")
+	var glassback: AlienLifeform = _first_lifeform(game, "glassback")
+	glassback.global_position = game.diver.global_position + Vector2(20.0, 0.0)
+	glassback.ability_cooldown = 0.0
+	game._update_lifeform_ability(glassback, 20.0)
+	_expect(game.diver.shield_time > 0.0, "Glassbacks grant a temporary protective resonance.")
+	var veil_moss: AlienLifeform = _first_lifeform(game, "veil_moss")
+	veil_moss.global_position = game.diver.global_position + Vector2(20.0, 0.0)
+	veil_moss.ability_cooldown = 0.0
+	game.health = 60.0
+	game._update_lifeform_ability(veil_moss, 20.0)
+	_expect(game.health > 60.0, "Veil moss releases visible restorative spores.")
+	var lantern: AlienLifeform = _first_lifeform(game, "lantern_bloom")
+	var riftstalker_for_ability: AlienLifeform = _first_lifeform(game, "riftstalker")
+	lantern.global_position = game.diver.global_position
+	riftstalker_for_ability.global_position = game.diver.global_position + Vector2(80.0, 0.0)
+	lantern.ability_cooldown = 0.0
+	game._update_lifeform_ability(lantern, 0.0)
+	_expect(riftstalker_for_ability.stun_remaining > 0.0, "Lantern blooms flash to interrupt nearby hunters.")
+	for ability_lifeform in [ribbon, glassback, veil_moss, lantern, riftstalker_for_ability]:
+		ability_lifeform.global_position = ability_lifeform.home_position
+	riftstalker_for_ability.stun_remaining = 0.0
+	game.health = 100.0
+	game.diver.shield_time = 0.0
+	game.diver.current_boost_time = 0.0
+	game.oxygen = game.oxygen_capacity
 
 	var moon_jelly: AlienLifeform = _first_lifeform(game, "moon_jelly")
 	_expect(
@@ -312,16 +449,21 @@ func _run() -> void:
 	_expect(game.pause_menu_open and game.get_tree().paused, "Escape opens a pausing menu.")
 	_expect(game.pause_overlay.color.a < 0.75, "The acrylic pause overlay lets the ocean show through.")
 	_expect(
-		game.pause_panel.anchor_left == 0.0
-		and is_equal_approx(game.pause_panel.offset_left, 22.0),
-		"The main menu is anchored along the left side of the screen."
+		is_equal_approx(game.pause_panel.anchor_left, 0.5)
+		and is_equal_approx(game.pause_panel.anchor_top, 0.5)
+		and game.menu_pattern.texture != null
+		and is_equal_approx(game.menu_pattern.offset_left, game.pause_panel.offset_left)
+		and is_equal_approx(game.menu_pattern.offset_bottom, game.pause_panel.offset_bottom),
+		"The pause menu is centered with a full-panel ocean-life pattern."
 	)
+	var pause_style: StyleBoxFlat = game.pause_panel.get_theme_stylebox("panel")
+	_expect(pause_style.border_width_left >= 3, "The centered menus have a distinctive bright border.")
 	game._show_settings(true)
 	_expect(game.settings_panel_visible, "Settings can be opened from the pause menu.")
 	_expect(
 		is_equal_approx(game.pause_panel.anchor_left, 0.5)
-		and is_equal_approx(game.pause_panel.offset_left, -470.0)
-		and is_equal_approx(game.pause_panel.offset_right, 470.0),
+		and is_equal_approx(game.pause_panel.offset_left, -465.0)
+		and is_equal_approx(game.pause_panel.offset_right, 465.0),
 		"The wider settings panel is centered on the screen."
 	)
 	_expect(not game.settings_data["show_gameplay_hints"], "Gameplay hints are off by default.")

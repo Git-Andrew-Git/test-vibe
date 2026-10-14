@@ -2,7 +2,6 @@ extends Node2D
 class_name OceanWorld
 
 const BACKDROP := preload("res://assets/art/abyss_environment.svg")
-const SURFACE_ART := preload("res://assets/art/surface_world.svg")
 const LIFE_ATLAS := preload("res://assets/art/alien_life.svg")
 const SEAWEED_TEXTURES := [
 	preload("res://assets/kenney_fish_pack/background_seaweed_a.png"),
@@ -27,6 +26,8 @@ const ESCAPE_POD_ART := preload("res://assets/art/escape_pod.svg")
 const TRENCH_FLOOR_ART := preload("res://assets/art/trench_floor.svg")
 
 const WORLD_WIDTH := 4400.0
+const SKY_TOP_Y := -2960.0
+const SKY_WIDTH := 4400.0
 const WATER_SURFACE_Y := 0.0
 const DAY_LENGTH_SECONDS := 240.0
 const WEATHER_LENGTH_SECONDS := 54.0
@@ -34,8 +35,6 @@ const WEATHER_TYPES := ["CALM", "RAIN", "MIST", "SQUALL"]
 
 var bubbles: Array[Sprite2D] = []
 var bubble_rises: Array[float] = []
-var surface_creatures: Array[Sprite2D] = []
-var surface_creature_origins: Array[Vector2] = []
 var elapsed := 0.0
 var daylight := 1.0
 var weather := "CALM"
@@ -51,15 +50,7 @@ func _ready() -> void:
 	backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(backdrop)
 
-	var surface := Sprite2D.new()
-	surface.texture = SURFACE_ART
-	surface.position = Vector2(0.0, -465.0)
-	surface.z_index = -20
-	surface.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	add_child(surface)
-
 	_add_escape_pod()
-	_add_surface_creatures()
 	_add_reef_life()
 	_add_terrain()
 	_add_trench_floor()
@@ -84,25 +75,35 @@ func _process(delta: float) -> void:
 			bubble.position.y = 2150.0 + fmod(float(index) * 137.0, 460.0)
 			bubble.position.x = sin(float(index) * 3.37) * 930.0
 
-	for index in range(surface_creatures.size()):
-		var creature := surface_creatures[index]
-		var origin := surface_creature_origins[index]
-		var direction := 1.0 if index % 2 == 0 else -1.0
-		creature.position.x = origin.x + sin(elapsed * 0.08 + float(index)) * 310.0
-		creature.position.y = origin.y + sin(elapsed * 0.7 + float(index) * 2.0) * 15.0
-		creature.flip_h = sin(elapsed * 0.08 + float(index)) * direction < 0.0
-
 	queue_redraw()
 
 func _draw() -> void:
+	_draw_sky_background()
 	_draw_sky_objects()
 	_draw_water_surface()
 	_draw_caustics()
 	_draw_weather()
 
+func _draw_sky_background() -> void:
+	var sky_colors := [
+		Color(0.025, 0.09, 0.20),
+		Color(0.035, 0.17, 0.31),
+		Color(0.075, 0.34, 0.47),
+		Color(0.22, 0.60, 0.64),
+		Color(0.50, 0.78, 0.71),
+		Color(0.15, 0.53, 0.63)
+	]
+	var band_height := absf(SKY_TOP_Y) / float(sky_colors.size() - 1)
+	for index in range(sky_colors.size() - 1):
+		var top := SKY_TOP_Y + float(index) * band_height
+		draw_rect(
+			Rect2(-2200.0, top, 4400.0, band_height + 2.0),
+			sky_colors[index].lerp(sky_colors[index + 1], 0.5)
+		)
+
 func _draw_sky_objects() -> void:
 	var orbit := elapsed * TAU / DAY_LENGTH_SECONDS
-	var sky_x := sin(orbit) * 1120.0
+	var sky_x := sin(orbit) * 1750.0
 	var sun_height := 450.0 + cos(orbit) * 260.0
 	var alpha := clampf(daylight * 1.6, 0.0, 1.0)
 	if alpha > 0.02:
@@ -112,15 +113,15 @@ func _draw_sky_objects() -> void:
 	if night_alpha > 0.02:
 		draw_circle(Vector2(-sky_x, -sun_height), 25.0, Color(0.80, 0.94, 1.0, night_alpha))
 		for index in range(22):
-			var star_x := sin(float(index) * 17.3) * 1460.0
-			var star_y := -200.0 - fmod(float(index) * 79.0, 670.0)
+			var star_x := sin(float(index) * 17.3) * 2060.0
+			var star_y := -180.0 - fmod(float(index) * 113.0, absf(SKY_TOP_Y) - 180.0)
 			var twinkle := 0.3 + 0.7 * absf(sin(elapsed * 1.2 + float(index)))
 			draw_circle(Vector2(star_x, star_y), 1.4, Color(0.82, 0.96, 1.0, night_alpha * twinkle))
 
-	for index in range(5):
-		var cloud_x := fposmod(float(index) * 960.0 + elapsed * 7.0, 4200.0) - 2100.0
-		var cloud_y := -610.0 - float(index % 2) * 100.0
-		var cloud_color := Color(0.81, 0.94, 0.94, 0.52 * daylight)
+	for index in range(7):
+		var cloud_x := fposmod(float(index) * 690.0 + elapsed * (8.0 + float(index % 3)), 4400.0) - 2200.0
+		var cloud_y := -460.0 - float(index % 3) * 170.0
+		var cloud_color := Color(0.78, 0.93, 0.93, 0.50 * daylight)
 		if weather == "MIST":
 			cloud_color = Color(0.75, 0.84, 0.89, 0.72)
 		draw_circle(Vector2(cloud_x, cloud_y), 68.0, cloud_color)
@@ -182,22 +183,6 @@ func _update_weather_state() -> void:
 		else 0.0
 	)
 
-func _add_surface_creatures() -> void:
-	for index in range(4):
-		var atlas := AtlasTexture.new()
-		atlas.atlas = LIFE_ATLAS
-		atlas.region = Rect2i(128 if index % 2 == 0 else 0, 0, 128, 128)
-		var creature := Sprite2D.new()
-		creature.texture = atlas
-		creature.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-		creature.position = Vector2(-1300.0 + float(index) * 860.0, -70.0 - float(index % 2) * 100.0)
-		creature.scale = Vector2(0.40, 0.40)
-		creature.modulate = Color(0.73, 1.0, 0.94, 0.92)
-		creature.z_index = -4
-		add_child(creature)
-		surface_creatures.append(creature)
-		surface_creature_origins.append(creature.position)
-
 func _add_reef_life() -> void:
 	var random := RandomNumberGenerator.new()
 	random.seed = 98241
@@ -235,7 +220,7 @@ func _add_escape_pod() -> void:
 	var pod := Sprite2D.new()
 	pod.texture = ESCAPE_POD_ART
 	pod.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	pod.position = Vector2(-185.0, -88.0)
+	pod.position = Vector2(-185.0, 80.0)
 	pod.scale = Vector2(1.06, 1.06)
 	pod.z_index = 2
 	add_child(pod)
@@ -270,6 +255,26 @@ func _add_terrain() -> void:
 		]),
 		Color(0.13, 0.31, 0.45)
 	)
+	var random := RandomNumberGenerator.new()
+	random.seed = 913847
+	for index in range(8):
+		var side := -1.0 if index % 2 == 0 else 1.0
+		var center := Vector2(
+			side * random.randf_range(760.0, 1240.0),
+			random.randf_range(1450.0, 2050.0)
+		)
+		var radius_x := random.randf_range(52.0, 126.0)
+		var radius_y := random.randf_range(38.0, 94.0)
+		var vertex_count := random.randi_range(6, 9)
+		var points := PackedVector2Array()
+		for vertex in range(vertex_count):
+			var angle := TAU * float(vertex) / float(vertex_count)
+			var uneven_radius := random.randf_range(0.72, 1.28)
+			points.append(center + Vector2(
+				cos(angle) * radius_x * uneven_radius,
+				sin(angle) * radius_y * uneven_radius
+			))
+		_add_rock_formation("ScatteredReef%d" % index, points, Color(0.10, 0.28, 0.42))
 	_add_cave_roof("WestCaveRoof", Rect2(-1380.0, 320.0, 860.0, 60.0))
 	_add_cave_roof("EastCaveRoof", Rect2(520.0, 820.0, 790.0, 60.0))
 	_add_cave_shadow("WestCaveShadow", Rect2(-1270.0, 380.0, 720.0, 41.0))

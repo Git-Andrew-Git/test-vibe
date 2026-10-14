@@ -9,6 +9,9 @@ var yield_amount := 1
 var recipe_id := ""
 var species_kind := "flora"
 var flora_behavior := ""
+var ability := ""
+var ability_cooldown := 3.0
+var ability_active_time := 0.0
 var aggressive := false
 var hunter_target: Node2D
 var sprite_texture: Texture2D
@@ -34,9 +37,22 @@ func _process(delta: float) -> void:
 		return
 	behavior_time += delta
 	stun_remaining = maxf(0.0, stun_remaining - delta)
+	ability_cooldown = maxf(0.0, ability_cooldown - delta)
+	ability_active_time = maxf(0.0, ability_active_time - delta)
+	if ability_active_time > 0.0:
+		queue_redraw()
 	if species_kind == "fauna":
 		if stun_remaining > 0.0:
 			return
+		if ability == "electric_lunge" and is_instance_valid(hunter_target):
+			var lunge_distance := global_position.distance_to(hunter_target.global_position)
+			if lunge_distance < 300.0 and ability_cooldown <= 0.0:
+				var lunge_direction := (hunter_target.global_position - global_position).normalized()
+				var lunge_offset := lunge_direction * minf(95.0, lunge_distance)
+				global_position += lunge_offset
+				home_position += lunge_offset
+				activate_ability()
+				ability_cooldown = 5.0
 		position.x = move_toward(
 			position.x,
 			home_position.x + sin(Time.get_ticks_msec() * 0.0003 + swim_phase) * 42.0,
@@ -50,6 +66,9 @@ func _process(delta: float) -> void:
 			var direction := (hunter_target.global_position - global_position).normalized()
 			global_position += direction * minf(30.0 * delta, global_position.distance_to(hunter_target.global_position))
 			icon.rotation = direction.x * 0.16
+			if global_position.distance_to(hunter_target.global_position) < 190.0 and ability_cooldown <= 0.0:
+				activate_ability()
+				ability_cooldown = 6.0
 		else:
 			position = position.move_toward(
 				home_position + Vector2(sin(behavior_time * 0.7 + swim_phase) * 18.0, 0.0),
@@ -84,3 +103,65 @@ func collect() -> void:
 func stun() -> void:
 	stun_remaining = 5.0
 	icon.modulate = Color(0.65, 0.88, 1.0)
+
+func activate_ability() -> void:
+	ability_active_time = 0.9
+	queue_redraw()
+
+func _draw() -> void:
+	if ability_active_time <= 0.0:
+		return
+	var progress := 1.0 - ability_active_time / 0.9
+	var radius := 24.0 + progress * 150.0
+	var tint := Color(0.35, 1.0, 0.78, 1.0)
+	match ability:
+		"current_burst":
+			tint = Color(0.34, 0.88, 1.0)
+		"shell_guard":
+			tint = Color(0.62, 0.83, 1.0)
+		"electric_lunge":
+			tint = Color(0.95, 0.42, 1.0)
+		"warm_current":
+			tint = Color(1.0, 0.65, 0.29)
+		"healing_spores":
+			tint = Color(1.0, 0.51, 0.84)
+		"vine_snare":
+			tint = Color(1.0, 0.35, 0.39)
+		"lure_flash":
+			tint = Color(1.0, 0.95, 0.48)
+	var alpha := clampf(1.0 - progress, 0.0, 1.0)
+	for ring in range(3):
+		var ring_radius := radius - float(ring) * 19.0
+		draw_arc(
+			Vector2.ZERO,
+			ring_radius,
+			float(ring) * 0.54,
+			TAU - float(ring) * 0.37,
+			36,
+			Color(tint, alpha * (0.82 - float(ring) * 0.16)),
+			3.0 if ring == 0 else 1.8,
+			true
+		)
+	if ability == "electric_lunge":
+		for bolt in range(5):
+			var bolt_x := float(bolt - 2) * 11.0
+			draw_line(
+				Vector2(bolt_x, -28.0),
+				Vector2(bolt_x + 7.0, -7.0),
+				Color(tint, alpha),
+				2.8,
+				true
+			)
+			draw_line(
+				Vector2(bolt_x + 7.0, -7.0),
+				Vector2(bolt_x - 3.0, 12.0),
+				Color(tint, alpha),
+				2.8,
+				true
+			)
+	elif ability == "vine_snare":
+		for tendril in range(4):
+			var side := -1.0 if tendril % 2 == 0 else 1.0
+			var start := Vector2(side * 17.0, 8.0)
+			var end := Vector2(side * radius * 0.72, -radius * 0.4)
+			draw_line(start, end, Color(tint, alpha), 3.0, true)
