@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <defs>
+    <linearGradient id="crystal" x2=".8" y2="1">
+      <stop stop-color="#f9fff0"/>
+      <stop offset=".28" stop-color="#b8fff1"/>
+      <stop offset=".65" stop-color="#5fdcc7"/>
+      <stop offset="1" stop-color="#25829d"/>
+    </linearGradient>
+    <radialGradient id="aura">
+      <stop stop-color="#8fffee" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#5ae0de" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="48" cy="49" r="46" fill="url(#aura)"/>
+  <path d="m20 61 4-25 18-20 20 8 14 24-11 24-27 9Z" fill="#0b526a" opacity=".48"/>
+  <path d="m17 58 8-27 19-14 17 9 15 22-14 24-25 6Z" fill="url(#crystal)" stroke="#e1fff4" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m25 31 19 8 17-13m-17 13 5 37m-5-37-22 19m22-19 30 3" fill="none" stroke="#f4fff0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+  <path d="m44 39 17-13-7 20Zm0 0-19-8 18 21Zm0 0 30 3-25 34Z" fill="#fff" opacity=".2"/>
+  <circle cx="65" cy="30" r="3" fill="#fff"/>
+  <circle cx="30" cy="67" r="2" fill="#fff"/>
+</svg>

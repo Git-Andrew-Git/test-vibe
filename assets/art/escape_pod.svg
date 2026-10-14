@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="200" viewBox="0 0 240 200">
+  <defs>
+    <linearGradient id="shell" x2=".9" y2="1">
+      <stop stop-color="#fff0c9"/>
+      <stop offset=".32" stop-color="#ee9e67"/>
+      <stop offset=".72" stop-color="#d45e69"/>
+      <stop offset="1" stop-color="#733e70"/>
+    </linearGradient>
+    <linearGradient id="glass" x2=".8" y2="1">
+      <stop stop-color="#d7fff4"/>
+      <stop offset=".43" stop-color="#4dc8d6"/>
+      <stop offset="1" stop-color="#16466d"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop stop-color="#fff5c4" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#fff5c4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="120" cy="177" rx="101" ry="18" fill="#123656" opacity=".42"/>
+  <ellipse cx="120" cy="170" rx="80" ry="23" fill="url(#glow)"/>
+  <path d="m47 162 11-34 23-16h78l23 16 11 34q-27 20-74 20t-72-20Z" fill="#4b466f" stroke="#f8d49e" stroke-width="5"/>
+  <path d="m58 153 12-27 20-12h60l20 12 12 27q-27 15-62 15t-62-15Z" fill="url(#shell)" stroke="#ffe8bf" stroke-width="4"/>
+  <path d="m74 140 10-34 23-20h26l23 20 10 34q-22 13-46 13t-46-13Z" fill="url(#shell)" stroke="#fff0d0" stroke-width="5"/>
+  <path d="M82 105q3-51 38-53 35 2 38 53l-9 23H91Z" fill="url(#glass)" stroke="#fff6dd" stroke-width="7"/>
+  <path d="M97 83q12-18 29-14l-24 35q-8 4-8-5Z" fill="#eaffef" opacity=".64"/>
+  <path d="m87 123 65 0m-75 17 87 0" fill="none" stroke="#ffe4b0" stroke-width="5" stroke-linecap="round"/>
+  <path d="m59 151-12 20m145-20 12 20" stroke="#2a5970" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="82" cy="155" r="5" fill="#ffdb80"/>
+  <circle cx="158" cy="155" r="5" fill="#9affcf"/>
+  <path d="M111 114h18m-18 8h18" stroke="#f7ffd7" stroke-width="3" stroke-linecap="round" opacity=".86"/>
+</svg>

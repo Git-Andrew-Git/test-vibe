@@ -1,0 +1,8 @@
+Fish Pack 2.0
+Created by Kenney (https://kenney.nl/assets/fish-pack)
+License: Creative Commons Zero (CC0 1.0)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+The pack is free to use, modify, and redistribute. Attribution is appreciated
+but is not required. This project includes selected double-resolution PNG
+textures from the original pack.

@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Godot: Launch game",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\Programs\\Godot\\Godot_v4.7.2-stable_win64.exe",
+      "args": ["--path", "${workspaceFolder}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Godot: Open editor",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\Programs\\Godot\\Godot_v4.7.2-stable_win64.exe",
+      "args": ["--editor", "--path", "${workspaceFolder}"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Godot: Run gameplay tests",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\Programs\\Godot\\Godot_v4.7.2-stable_win64_console.exe",
+      "args": [
+        "--headless",
+        "--path",
+        "${workspaceFolder}",
+        "--script",
+        "res://tests/prototype_smoke_test.gd"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

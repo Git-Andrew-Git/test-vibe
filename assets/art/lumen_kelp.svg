@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <defs>
+    <radialGradient id="glow">
+      <stop stop-color="#fffbb1" stop-opacity=".7"/>
+      <stop offset="1" stop-color="#59ffd3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="leaf" x2=".8" y2="1">
+      <stop stop-color="#edffd0"/>
+      <stop offset=".45" stop-color="#8bf68c"/>
+      <stop offset="1" stop-color="#23bfaa"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="45" fill="url(#glow)"/>
+  <path d="M49 81q-7-20 1-42 8 19 2 42m-4-23q-20-5-24-22 18 3 27 17m-3 14q20-8 24-25-18 5-27 21m4-28q-13-10-11-25 13 8 15 21" fill="none" stroke="#0b765f" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M49 81q-7-20 1-42 8 19 2 42m-4-23q-20-5-24-22 18 3 27 17m-3 14q20-8 24-25-18 5-27 21m4-28q-13-10-11-25 13 8 15 21" fill="none" stroke="url(#leaf)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m28 38 16 12m28 0L51 63M44 28l6 16m4 13 1 24" stroke="#efffb1" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="27" cy="36" r="4" fill="#fffbc5"/>
+  <circle cx="73" cy="51" r="4" fill="#fffbc5"/>
+  <circle cx="43" cy="25" r="3" fill="#fffbc5"/>
+</svg>

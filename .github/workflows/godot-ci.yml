@@ -1,0 +1,42 @@
+name: Godot CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Install Godot
+        shell: pwsh
+        run: |
+          $version = "4.7.2"
+          $archiveName = "Godot_v$version-stable_win64.exe.zip"
+          $url = "https://github.com/godotengine/godot/releases/download/$version-stable/$archiveName"
+          $installDir = Join-Path $env:RUNNER_TEMP "godot"
+          Invoke-WebRequest -Uri $url -OutFile (Join-Path $env:RUNNER_TEMP $archiveName)
+          Expand-Archive -LiteralPath (Join-Path $env:RUNNER_TEMP $archiveName) -DestinationPath $installDir -Force
+          $executable = Join-Path $installDir "Godot_v${version}-stable_win64_console.exe"
+          if (-not (Test-Path $executable)) {
+            throw "Godot executable was not found after extraction."
+          }
+          "GODOT_BIN=$executable" >> $env:GITHUB_ENV
+
+      - name: Import and validate project
+        shell: pwsh
+        run: |
+          & $env:GODOT_BIN --headless --path $env:GITHUB_WORKSPACE --editor --quit
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: Test gameplay and save progress
+        shell: pwsh
+        run: |
+          & $env:GODOT_BIN --headless --path $env:GITHUB_WORKSPACE --script res://tests/prototype_smoke_test.gd
+          exit $LASTEXITCODE

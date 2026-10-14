@@ -1,0 +1,26 @@
+; Engine configuration file.
+; First playable desktop prototype for the alien-ocean survival game.
+
+config_version=5
+
+[application]
+
+config/name="The Quiet Trench"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+textures/default_filters/texture_filter=1
+environment/defaults/default_clear_color=Color(0.0156863, 0.0745098, 0.121569, 1)
