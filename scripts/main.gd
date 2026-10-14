@@ -25,13 +25,13 @@ const ANALYZER_HALF_ANGLE := 15.0
 const INVENTORY_SLOT_COUNT := 24
 const QUICK_SLOT_COUNT := 5
 const TECHNOLOGY_ICON_REGIONS := {
-	"pressure_weave": Rect2i(0, 0, 128, 128),
-	"deep_tank": Rect2i(128, 0, 128, 128),
-	"fins": Rect2i(256, 0, 128, 128),
-	"lamp": Rect2i(384, 0, 128, 128),
-	"submersible": Rect2i(512, 0, 128, 128),
-	"tranquilizer": Rect2i(640, 0, 128, 128),
-	"medkit": Rect2i(768, 0, 128, 128)
+	"pressure_weave": Rect2i(0, 0, 512, 512),
+	"deep_tank": Rect2i(512, 0, 512, 512),
+	"fins": Rect2i(1024, 0, 512, 512),
+	"lamp": Rect2i(1536, 0, 512, 512),
+	"submersible": Rect2i(2048, 0, 512, 512),
+	"tranquilizer": Rect2i(2560, 0, 512, 512),
+	"medkit": Rect2i(3072, 0, 512, 512)
 }
 const WORLD_LIMIT_X := 1400.0
 const AUTOSAVE_INTERVALS := [0, 30, 60, 300, 600, 900, 1800]
@@ -103,7 +103,7 @@ const SPECIES := [
 		"kind": "fauna",
 		"resource": "moon_mucus",
 		"recipe": "deep_tank",
-		"region": Rect2i(0, 0, 128, 128),
+		"region": Rect2i(0, 0, 512, 512),
 		"depth": Vector2(270, 0),
 		"count": 3,
 		"yield": 1,
@@ -116,7 +116,7 @@ const SPECIES := [
 		"kind": "fauna",
 		"resource": "ribbon_silk",
 		"recipe": "fins",
-		"region": Rect2i(128, 0, 128, 128),
+		"region": Rect2i(512, 0, 512, 512),
 		"depth": Vector2(390, 500),
 		"count": 3,
 		"yield": 1,
@@ -129,7 +129,7 @@ const SPECIES := [
 		"kind": "fauna",
 		"resource": "shell_plate",
 		"recipe": "submersible",
-		"region": Rect2i(256, 0, 128, 128),
+		"region": Rect2i(1024, 0, 512, 512),
 		"depth": Vector2(570, 850),
 		"count": 3,
 		"yield": 1,
@@ -142,7 +142,7 @@ const SPECIES := [
 		"kind": "fauna",
 		"resource": "electric_filament",
 		"recipe": "tranquilizer",
-		"region": Rect2i(384, 0, 128, 128),
+		"region": Rect2i(1536, 0, 512, 512),
 		"depth": Vector2(760, 1350),
 		"count": 2,
 		"yield": 1,
@@ -155,7 +155,7 @@ const SPECIES := [
 		"kind": "flora",
 		"resource": "ember_kelp",
 		"recipe": "fins",
-		"region": Rect2i(512, 0, 128, 128),
+		"region": Rect2i(2048, 0, 512, 512),
 		"depth": Vector2(305, 180),
 		"count": 4,
 		"yield": 1,
@@ -169,7 +169,7 @@ const SPECIES := [
 		"kind": "flora",
 		"resource": "veil_moss",
 		"recipe": "medkit",
-		"region": Rect2i(640, 0, 128, 128),
+		"region": Rect2i(2560, 0, 512, 512),
 		"depth": Vector2(520, 720),
 		"count": 4,
 		"yield": 1,
@@ -183,7 +183,7 @@ const SPECIES := [
 		"kind": "flora",
 		"resource": "spire_coral",
 		"recipe": "submersible",
-		"region": Rect2i(768, 0, 128, 128),
+		"region": Rect2i(3072, 0, 512, 512),
 		"depth": Vector2(675, 1120),
 		"count": 4,
 		"yield": 1,
@@ -197,7 +197,7 @@ const SPECIES := [
 		"kind": "flora",
 		"resource": "abyssal_bloom",
 		"recipe": "lamp",
-		"region": Rect2i(896, 0, 128, 128),
+		"region": Rect2i(3584, 0, 512, 512),
 		"depth": Vector2(560, 930),
 		"count": 4,
 		"yield": 1,
@@ -462,18 +462,18 @@ func _process(delta: float) -> void:
 		oxygen_empty_time = 0.0
 	else:
 		var over_depth := maxf(0.0, depth - depth_limit)
-		var oxygen_stress := 1.0 + over_depth * 0.018
+		var oxygen_stress := 1.0 + over_depth * 0.009
 		oxygen = maxf(0.0, oxygen - (1.8 + depth * 0.006) * oxygen_stress * delta)
 		if over_depth > 0.0:
 			if diver.has_submersible and diver.vehicle_health > 0.0:
 				diver.vehicle_health = maxf(
 					0.0,
-					diver.vehicle_health - (1.5 + over_depth * 0.012) * delta
+					diver.vehicle_health - (0.75 + over_depth * 0.006) * delta
 				)
 				if diver.vehicle_health <= 0.0:
 					health = maxf(0.0, health - 12.0 * delta)
 			else:
-				var pressure_damage := (1.5 + over_depth * 0.012) * delta
+				var pressure_damage := (0.75 + over_depth * 0.006) * delta
 				health = maxf(
 					0.0,
 					health - pressure_damage * (0.4 if diver.shield_time > 0.0 else 1.0)
@@ -766,7 +766,14 @@ func _create_hud() -> void:
 	hover_panel.visible = false
 	hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hover_panel.z_index = 20
-	_style_glass_panel(hover_panel, Color(0.38, 0.92, 0.87))
+	var hover_style := StyleBoxFlat.new()
+	hover_style.bg_color = Color(0.015, 0.09, 0.14, 0.68)
+	hover_style.set_corner_radius_all(12)
+	hover_style.content_margin_left = 12.0
+	hover_style.content_margin_right = 12.0
+	hover_style.content_margin_top = 6.0
+	hover_style.content_margin_bottom = 6.0
+	hover_panel.add_theme_stylebox_override("panel", hover_style)
 	hover_label = Label.new()
 	hover_label.add_theme_font_size_override("font_size", 13)
 	hover_label.add_theme_color_override("font_color", Color(0.88, 1.0, 0.98))
@@ -775,28 +782,17 @@ func _create_hud() -> void:
 	_create_quick_slots(canvas)
 
 	var radio_control := Button.new()
-	radio_control.text = "RADIO"
 	radio_control.icon = RADIO_ART
 	radio_control.expand_icon = true
 	radio_control.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	radio_control.offset_left = -204.0
-	radio_control.offset_right = -112.0
+	radio_control.offset_left = -78.0
+	radio_control.offset_right = -20.0
 	radio_control.offset_top = 20.0
-	radio_control.offset_bottom = 62.0
+	radio_control.offset_bottom = 78.0
 	radio_control.pressed.connect(_toggle_radio)
 	radio_control.name = "RadioButton"
 	radio_button = radio_control
 	canvas.add_child(radio_control)
-
-	var menu_button := Button.new()
-	menu_button.text = "MENU"
-	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	menu_button.offset_left = -106.0
-	menu_button.offset_right = -20.0
-	menu_button.offset_top = 20.0
-	menu_button.offset_bottom = 62.0
-	menu_button.pressed.connect(_set_pause_menu.bind(true))
-	canvas.add_child(menu_button)
 
 	prompt_panel = PanelContainer.new()
 	prompt_panel.custom_minimum_size = Vector2(570, 56)
@@ -1585,15 +1581,14 @@ func _layout_menu_panel(settings_open: bool) -> void:
 func _style_menu_panel(panel: PanelContainer) -> void:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.005, 0.025, 0.065, 0.36)
-	style.border_color = Color(0.38, 0.95, 1.0, 0.98)
-	style.set_border_width_all(3)
+	style.set_border_width_all(0)
 	style.set_corner_radius_all(24)
 	style.content_margin_left = 24.0
 	style.content_margin_right = 24.0
 	style.content_margin_top = 20.0
 	style.content_margin_bottom = 20.0
-	style.shadow_color = Color(0.12, 0.80, 0.91, 0.38)
-	style.shadow_size = 18
+	style.shadow_color = Color(0.12, 0.55, 0.68, 0.20)
+	style.shadow_size = 30
 	panel.add_theme_stylebox_override("panel", style)
 
 func _add_menu_title(parent: Control, title_text: String) -> void:
@@ -1813,15 +1808,14 @@ func _apply_installed_techs() -> void:
 func _style_glass_panel(panel: PanelContainer, accent: Color) -> void:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.006, 0.035, 0.075, 0.70)
-	style.border_color = Color(0.18, 0.70, 0.89, 0.68).lerp(accent, 0.24)
-	style.set_border_width_all(1)
+	style.set_border_width_all(0)
 	style.set_corner_radius_all(18)
 	style.content_margin_left = 18.0
 	style.content_margin_right = 18.0
 	style.content_margin_top = 14.0
 	style.content_margin_bottom = 14.0
-	style.shadow_color = Color(0.0, 0.035, 0.09, 0.55)
-	style.shadow_size = 10
+	style.shadow_color = Color(0.0, 0.035, 0.09, 0.42).lerp(accent, 0.12)
+	style.shadow_size = 14
 	panel.add_theme_stylebox_override("panel", style)
 
 func _create_atmosphere() -> void:

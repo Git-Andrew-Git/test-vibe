@@ -27,13 +27,15 @@
   </defs>
 
   <g transform="translate(0 0)">
-    <ellipse cx="64" cy="111" rx="48" ry="9" fill="#5ce9e0" opacity=".3"/>
-    <path d="M25 67q4-40 39-43 34 4 39 43l-15 31q-23 19-48 0Z" fill="url(#jelly)" stroke="#f7ffdc" stroke-width="5"/>
-    <path d="M37 80q-8 20-5 35m19-30q-4 20 2 35m18-35q7 19 1 35m15-38q11 16 10 32" fill="none" stroke="#ffebc6" stroke-width="6" stroke-linecap="round"/>
-    <path d="M43 58q18-13 40 0" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
-    <circle cx="53" cy="68" r="5" fill="#633d91"/><circle cx="76" cy="68" r="5" fill="#633d91"/>
-    <circle cx="55" cy="67" r="2" fill="#fff"/><circle cx="78" cy="67" r="2" fill="#fff"/>
-    <circle cx="64" cy="83" r="5" fill="#fff2a3"/>
+    <ellipse cx="64" cy="113" rx="47" ry="8" fill="#5ce9e0" opacity=".3"/>
+    <path d="M23 66q5-37 31-40 1-18 13-21 14 13 17 23 29 8 33 39-9 26-28 34-18 12-39 0Q29 91 23 66Z" fill="url(#jelly)" stroke="#f7ffdc" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M30 65q30-16 68 0m-59 15q24 12 51 0" fill="none" stroke="#fff7ed" stroke-width="3" stroke-linecap="round" opacity=".84"/>
+    <path d="M38 87q-8 15-3 36m17-32q-6 18 1 40m13-39q2 18-2 38m17-42q8 18 4 39m14-50q12 17 8 35" fill="none" stroke="#ffebc6" stroke-width="4" stroke-linecap="round"/>
+    <path d="M51 55q12-10 23 0m6 1q9-8 15 0" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="57" cy="66" r="4" fill="#633d91"/><circle cx="83" cy="66" r="4" fill="#633d91"/>
+    <circle cx="58" cy="65" r="1.7" fill="#fff"/><circle cx="84" cy="65" r="1.7" fill="#fff"/>
+    <path d="M68 76q6-5 12 0-5 11-12 0Z" fill="#fff2a3" stroke="#a76cc6" stroke-width="2"/>
+    <circle cx="43" cy="47" r="3" fill="#fffbd1"/><circle cx="103" cy="55" r="2.5" fill="#fffbd1"/>
   </g>
 
   <g transform="translate(128 0)">

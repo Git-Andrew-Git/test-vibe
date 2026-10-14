@@ -58,7 +58,7 @@ func _ready() -> void:
 
 	diver_sprite = Sprite2D.new()
 	diver_sprite.texture = DIVER_ART
-	diver_sprite.scale = Vector2(0.38, 0.38)
+	diver_sprite.scale = Vector2(0.095, 0.095)
 	diver_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	swim_rig.add_child(diver_sprite)
 
@@ -93,26 +93,26 @@ func _physics_process(_delta: float) -> void:
 	if (
 		surface_breach_time <= 0.0
 		and surface_breach_cooldown <= 0.0
-		and global_position.y > -28.0
+		and global_position.y >= 0.0
+		and global_position.y <= 24.0
 		and direction.y < -0.1
 	):
-		surface_breach_time = 0.95
-		velocity = Vector2(direction.x * speed * 0.55, -240.0)
+		surface_breach_time = 0.75
+		velocity = Vector2(direction.x * speed * 0.55, -220.0)
 
 	if surface_breach_time > 0.0:
 		surface_breach_time = maxf(0.0, surface_breach_time - _delta)
 		velocity.x = direction.x * speed * 0.45
-		velocity.y += 680.0 * _delta
+		velocity.y += 430.0 * _delta
 		move_and_slide()
-		if velocity.y > 0.0 and global_position.y >= -28.0:
-			global_position.y = -28.0
+		if velocity.y > 0.0 and surface_breach_time <= 0.0:
+			global_position.y = maxf(0.0, global_position.y)
 			velocity.y = 0.0
-			surface_breach_time = 0.0
 			surface_breach_cooldown = 1.2
 	else:
 		velocity = direction * speed
-		if global_position.y <= -14.0 and direction.y < 0.0:
-			velocity.y = maxf(velocity.y, 72.0)
+		if global_position.y <= 0.0 and direction.y < 0.0:
+			velocity.y = 0.0
 		move_and_slide()
 	global_position.x = clampf(global_position.x, -HORIZONTAL_LIMIT, HORIZONTAL_LIMIT)
 	global_position.y = clampf(global_position.y, -110.0, 2400.0)

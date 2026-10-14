@@ -57,6 +57,10 @@ func _run() -> void:
 	)
 	_expect(game.diver.diver_sprite.texture != null, "The smaller diver uses the illustrated sprite.")
 	_expect(
+		game.diver.diver_sprite.scale.is_equal_approx(Vector2(0.095, 0.095)),
+		"The high-resolution diver illustration keeps its established on-screen size."
+	)
+	_expect(
 		not game.diver.helmet_sprite.visible and not game.diver.fins_sprite.visible,
 		"The diver begins without a helmet or fins."
 	)
@@ -101,6 +105,39 @@ func _run() -> void:
 		game.diver.global_position.y < world.WATER_SURFACE_Y,
 		"The diver starts above the visible ocean surface."
 	)
+	var moon_jelly_animation: AlienLifeform = _first_lifeform(game, "moon_jelly")
+	moon_jelly_animation._process(0.1)
+	_expect(
+		moon_jelly_animation.swim_appendages.size() == 5,
+		"Swimming alien species have individually animated body appendages."
+	)
+	var first_tentacle_points: PackedVector2Array = moon_jelly_animation.swim_appendages[0].points
+	moon_jelly_animation._process(0.2)
+	_expect(
+		first_tentacle_points.size() == 4
+		and not is_equal_approx(
+			first_tentacle_points[2].x,
+			moon_jelly_animation.swim_appendages[0].points[2].x
+		),
+		"Moon-jelly tentacles visibly undulate independently of the body."
+	)
+	var menu_button_found := false
+	for hud_button in game.hud_canvas.find_children("*", "Button", true, false):
+		if (hud_button as Button).text == "MENU":
+			menu_button_found = true
+	_expect(
+		game.radio_button.text.is_empty() and not menu_button_found,
+		"The radio is icon-only and Esc is the only pause-menu opener."
+	)
+	var tooltip_style := game.hover_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	var pause_style := game.pause_panel.get_theme_stylebox("panel") as StyleBoxFlat
+	_expect(
+		tooltip_style.border_width_left == 0 and tooltip_style.border_width_top == 0
+		and tooltip_style.border_width_right == 0 and tooltip_style.border_width_bottom == 0
+		and pause_style.border_width_left == 0 and pause_style.border_width_top == 0
+		and pause_style.border_width_right == 0 and pause_style.border_width_bottom == 0,
+		"Hover labels and menus use soft, borderless ocean styling."
+	)
 	_expect(
 		world.WEATHER_TYPES.size() >= 4
 		and world.DAY_LENGTH_SECONDS > 0.0
@@ -108,11 +145,23 @@ func _run() -> void:
 		"The ocean starts in daylight and supports day-night and multiple weather cycles."
 	)
 	var saved_swimmer_position: Vector2 = game.diver.global_position
+	game.diver.global_position = Vector2(0.0, 1200.0)
 	Input.action_press("move_up")
-	var highest_breach_position: float = saved_swimmer_position.y
-	game.diver.global_position = Vector2(0.0, -15.0)
+	for _frame in range(12):
+		await physics_frame
+	var deep_ascent_y: float = game.diver.global_position.y
+	_expect(
+		deep_ascent_y > 0.0 and deep_ascent_y < 1190.0
+		and game.diver.surface_breach_time == 0.0,
+		"Holding swim-up deep underwater causes steady ascent, never a surface teleport."
+	)
+	Input.action_release("move_up")
+	game.diver.global_position = saved_swimmer_position
+	Input.action_press("move_up")
+	game.diver.global_position = Vector2(0.0, 15.0)
+	var highest_breach_position: float = game.diver.global_position.y
 	for _frame in range(65):
-		game.diver._physics_process(0.016)
+		await physics_frame
 		highest_breach_position = minf(highest_breach_position, game.diver.global_position.y)
 	Input.action_release("move_up")
 	_expect(
@@ -179,26 +228,30 @@ func _run() -> void:
 	game._process(1.0)
 	var oxygen_at_rating: float = game.oxygen
 	game.oxygen = game.oxygen_capacity
-	game.diver.global_position.y = 977.0
+	game.diver.global_position = Vector2(-2000.0, 977.0)
 	game.diver._physics_process(0.016)
 	_expect(
 		game.diver.global_position.y > game.depth_limit + 77.0,
 		"Swimming past the suit rating is not clamped by the diver controller."
 	)
+	game.diver.global_position.x = -4000.0
+	game.health = 100.0
 	game._process(1.0)
 	_expect(
-		game.oxygen < oxygen_at_rating and game.health < 100.0,
+		is_equal_approx(game.oxygen, game.oxygen_capacity - 33.12)
+		and is_equal_approx(game.health, 96.85)
+		and game.oxygen < oxygen_at_rating,
 		"Passing the depth rating drains oxygen faster and causes pressure damage instead of blocking movement."
 	)
 	game.health = 100.0
 	game.oxygen = game.oxygen_capacity
 	game.diver.has_submersible = true
 	game.diver.vehicle_health = 100.0
-	game.diver.global_position = Vector2(1500.0, 977.0)
+	game.diver.global_position = Vector2(-4000.0, 977.0)
 	game._process(1.0)
 	_expect(
-		game.diver.vehicle_health < 100.0,
-		"Exceeding the pressure pod's rating damages vehicle health."
+		is_equal_approx(game.diver.vehicle_health, 96.85),
+		"Exceeding the pressure pod's rating applies the reduced vehicle pressure penalty."
 	)
 	game.diver.has_submersible = false
 	game.diver.vehicle_health = 100.0
@@ -456,8 +509,10 @@ func _run() -> void:
 		and is_equal_approx(game.menu_pattern.offset_bottom, game.pause_panel.offset_bottom),
 		"The pause menu is centered with a full-panel ocean-life pattern."
 	)
-	var pause_style: StyleBoxFlat = game.pause_panel.get_theme_stylebox("panel")
-	_expect(pause_style.border_width_left >= 3, "The centered menus have a distinctive bright border.")
+	_expect(
+		pause_style.border_width_left == 0,
+		"The centered menus have soft ocean shading rather than a hard border."
+	)
 	game._show_settings(true)
 	_expect(game.settings_panel_visible, "Settings can be opened from the pause menu.")
 	_expect(

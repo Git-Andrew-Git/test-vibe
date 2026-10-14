@@ -21,10 +21,9 @@
   <circle cx="79" cy="46" r="2.5" fill="#152e48"/>
   <circle cx="101" cy="46" r="2.5" fill="#152e48"/>
   <path d="m89 48-1 8 5 2m-11 7q7 4 14-1" fill="none" stroke="#834c48" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M70 70q10-6 20-5 12-1 22 6l9 52q-18 11-39 11-20 0-39-11l10-48q7-4 17-5Z" fill="url(#suit)" stroke="#9b4e5c" stroke-width="4" stroke-linejoin="round"/>
-  <path d="M66 76q14 6 29 0l4 37q-17 8-34 0Z" fill="url(#torso)" stroke="#f8c97f" stroke-width="3" stroke-linejoin="round"/>
-  <path d="m73 85 9 7 9-7v20q-9 6-18 0Z" fill="#79e8dc"/>
-  <path d="M105 91h13v22h-13" fill="none" stroke="#ffce7e" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="111" cy="101" r="3" fill="#b7fff0"/>
-  <path d="M49 83q-6 5-8 13m71-13q6 5 8 13" fill="none" stroke="#ffe0a1" stroke-width="3" stroke-linecap="round"/>
+  <path d="M70 70q10-6 20-5 12-1 22 6l3 48q-15 10-35 10-19 0-35-10l4-44q8-5 21-5Z" fill="url(#suit)" stroke="#9b4e5c" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M71 77q10 4 21 0l2 34q-12 6-24 0Z" fill="url(#torso)" stroke="#f8c97f" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m75 84 7 6 7-6v18q-7 5-14 0Z" fill="#79e8dc"/>
+  <path d="M96 91h8v17h-8" fill="none" stroke="#ffce7e" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="100" cy="99" r="2.5" fill="#b7fff0"/>
 </svg>

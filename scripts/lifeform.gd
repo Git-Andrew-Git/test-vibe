@@ -18,6 +18,7 @@ var sprite_texture: Texture2D
 var harvested := false
 var scanned := false
 var icon: Sprite2D
+var swim_appendages: Array[Line2D] = []
 var home_position := Vector2.ZERO
 var swim_phase := 0.0
 var stun_remaining := 0.0
@@ -29,8 +30,10 @@ func _ready() -> void:
 	icon = Sprite2D.new()
 	icon.texture = sprite_texture
 	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-	icon.scale = Vector2(0.92, 0.92)
+	icon.scale = Vector2(0.23, 0.23)
 	add_child(icon)
+	if species_kind == "fauna":
+		_create_swim_appendages()
 
 func _process(delta: float) -> void:
 	if harvested:
@@ -39,6 +42,9 @@ func _process(delta: float) -> void:
 	stun_remaining = maxf(0.0, stun_remaining - delta)
 	ability_cooldown = maxf(0.0, ability_cooldown - delta)
 	ability_active_time = maxf(0.0, ability_active_time - delta)
+	_animate_swim_appendages()
+	if species_kind == "fauna":
+		queue_redraw()
 	if ability_active_time > 0.0:
 		queue_redraw()
 	if species_kind == "fauna":
@@ -99,6 +105,54 @@ func _process(delta: float) -> void:
 func collect() -> void:
 	harvested = true
 	icon.hide()
+
+func _create_swim_appendages() -> void:
+	var appendage_count := 5 if species_id == "moon_jelly" else 3
+	var tint := Color(0.65, 1.0, 0.95, 0.88)
+	if species_id == "ribbon_glider":
+		tint = Color(0.64, 0.9, 1.0, 0.9)
+	elif species_id == "riftstalker":
+		tint = Color(1.0, 0.51, 0.77, 0.92)
+	for index in range(appendage_count):
+		var appendage := Line2D.new()
+		appendage.width = 3.0 if species_id == "moon_jelly" else 3.8
+		appendage.default_color = tint
+		appendage.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		appendage.end_cap_mode = Line2D.LINE_CAP_ROUND
+		appendage.joint_mode = Line2D.LINE_JOINT_ROUND
+		appendage.antialiased = true
+		appendage.z_index = 1
+		add_child(appendage)
+		swim_appendages.append(appendage)
+
+func _animate_swim_appendages() -> void:
+	for index in range(swim_appendages.size()):
+		var appendage := swim_appendages[index]
+		var phase := behavior_time * (4.2 if species_id == "moon_jelly" else 3.2)
+		var offset := float(index) - float(swim_appendages.size() - 1) * 0.5
+		var wave := sin(phase + float(index) * 0.9 + swim_phase)
+		var points := PackedVector2Array()
+		if species_id == "moon_jelly":
+			var start_x := offset * 12.0
+			points.append(Vector2(start_x, 25.0))
+			points.append(Vector2(start_x + wave * 5.0, 43.0))
+			points.append(Vector2(start_x - wave * 10.0, 60.0))
+			points.append(Vector2(start_x + wave * 15.0, 77.0))
+		elif species_id == "ribbon_glider":
+			var glider_side := -1.0 if index == 0 else 1.0
+			var glider_start := Vector2(glider_side * 28.0, offset * 12.0)
+			points.append(glider_start)
+			points.append(glider_start + Vector2(glider_side * 13.0, wave * 8.0))
+			points.append(glider_start + Vector2(glider_side * 27.0, -wave * 12.0))
+			points.append(glider_start + Vector2(glider_side * 39.0, wave * 17.0))
+		else:
+			var body_side := -1.0 if index % 2 == 0 else 1.0
+			var body_start := Vector2(body_side * 27.0, offset * 9.0)
+			points.append(body_start)
+			points.append(body_start + Vector2(body_side * 12.0, wave * 7.0))
+			points.append(body_start + Vector2(body_side * 22.0, 10.0 + wave * 12.0))
+			points.append(body_start + Vector2(body_side * 31.0, 18.0 - wave * 13.0))
+		appendage.points = points
 
 func stun() -> void:
 	stun_remaining = 5.0
