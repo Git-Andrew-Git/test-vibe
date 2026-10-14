@@ -2,11 +2,17 @@ extends CharacterBody2D
 class_name OceanDiver
 
 const MOVE_SPEED := 185.0
-const HORIZONTAL_LIMIT := 610.0
+const BOOST_MULTIPLIER := 1.75
+const HORIZONTAL_LIMIT := 1420.0
 const DIVER_ART := preload("res://assets/art/diver.svg")
+const SUBMERSIBLE_ART := preload("res://assets/art/pocket_sub.svg")
 
 var depth_limit := 500.0
+var movement_speed := MOVE_SPEED
+var has_fins := false
+var has_submersible := false
 var diver_sprite: Sprite2D
+var submersible_sprite: Sprite2D
 var swim_time := 0.0
 
 func _ready() -> void:
@@ -23,9 +29,17 @@ func _ready() -> void:
 	camera.position_smoothing_speed = 5.0
 	add_child(camera)
 
+	submersible_sprite = Sprite2D.new()
+	submersible_sprite.texture = SUBMERSIBLE_ART
+	submersible_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	submersible_sprite.scale = Vector2(0.58, 0.58)
+	submersible_sprite.position = Vector2(0, -7)
+	submersible_sprite.visible = false
+	add_child(submersible_sprite)
+
 	diver_sprite = Sprite2D.new()
 	diver_sprite.texture = DIVER_ART
-	diver_sprite.scale = Vector2(0.74, 0.74)
+	diver_sprite.scale = Vector2(0.38, 0.38)
 	diver_sprite.position = Vector2(0, -9)
 	diver_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(diver_sprite)
@@ -37,14 +51,20 @@ func _physics_process(_delta: float) -> void:
 		float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))
 			- float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP))
 	)
-	velocity = direction.normalized() * MOVE_SPEED
+	var boost := has_fins and Input.is_physical_key_pressed(KEY_SHIFT)
+	velocity = direction.normalized() * _effective_movement_speed(boost)
 	move_and_slide()
 	global_position.x = clampf(global_position.x, -HORIZONTAL_LIMIT, HORIZONTAL_LIMIT)
 	global_position.y = clampf(global_position.y, 72.0, depth_limit + 77.0)
 	if velocity.length_squared() > 8.0:
 		swim_time += _delta * 8.0
-		diver_sprite.rotation = clampf(velocity.x / MOVE_SPEED, -1.0, 1.0) * 0.12
+		diver_sprite.rotation = clampf(velocity.x / (movement_speed * BOOST_MULTIPLIER), -1.0, 1.0) * 0.12
 		diver_sprite.position.y = -9.0 + sin(swim_time) * 2.2
 	else:
 		diver_sprite.rotation = move_toward(diver_sprite.rotation, 0.0, _delta * 0.7)
 		diver_sprite.position.y = lerpf(diver_sprite.position.y, -9.0, _delta * 2.0)
+		if has_submersible:
+			submersible_sprite.position.y = -7.0 + sin(swim_time * 0.5) * 1.1
+
+func _effective_movement_speed(boost_pressed: bool) -> float:
+	return movement_speed * (BOOST_MULTIPLIER if has_fins and boost_pressed else 1.0)

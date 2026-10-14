@@ -16,13 +16,14 @@ The project uses Godot's native project format; no external packages or test fra
 - Headless main-scene startup smoke test: `godot --headless --path . --quit-after 120`
 - Run the project with a locally installed Godot executable; if the command is not on PATH, substitute its full path.
 
-Tests use a lightweight built-in `SceneTree` script, with no external test framework.
+Tests use a lightweight built-in `SceneTree` script, with no external test framework. Cover scanning, sampling/recipes, every craftable's effect, and save migration when changing progression systems.
 
 ## Controls and gameplay conventions
 
-- WASD or arrow keys move; E interacts with nearby salvage or story objects; F crafts at the surface station.
+- WASD or arrow keys move; Shift boosts with fins; E samples or collects nearby objects; F toggles the field technology bench; hold left mouse to scan the lifeform in the analyzer beam; right-click to fire a tranquilizer dart.
 - Keep oxygen, pressure depth, resource counts, and upgrade state visible in the HUD and make interaction prompts contextual.
-- The player can recharge oxygen at the surface station. Pressure upgrades should open new exploration depth and connect progression to newly discovered story clues.
+- The escape pod refills oxygen. Scanning alien species reveals the technology they are associated with; sampling them yields their recipe ingredients. Keep recipe states explicit (unknown, missing resources, craftable, installed) and persist scans, materials, sampled life, upgrades, and story progress.
+- Pressure equipment, scrubber tanks, fins, lamps, submersibles, weapons, and healing should have visible and testable in-game effects.
 - This is a non-monetary single-player game. Do not add wagering, cash-out, payment, accounts, or online dependencies.
 - Preserve the bright, illustrated marine palette: sunlit cyan shallows, saturated reef colors, and gradual indigo depth. Prefer project-owned art and documented CC0 assets; record asset source and license next to imported packs.
 - Keep project data and scenes in Godot-native formats. Avoid introducing a web stack or server unless the product direction is explicitly changed.

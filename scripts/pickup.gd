@@ -2,8 +2,8 @@ extends Node2D
 class_name SalvagePickup
 
 const ICONS := {
-	"metal": preload("res://assets/art/driftmetal.svg"),
-	"kelp": preload("res://assets/art/lumen_kelp.svg"),
+	"driftmetal": preload("res://assets/art/driftmetal.svg"),
+	"lumen_kelp": preload("res://assets/art/lumen_kelp.svg"),
 	"story": preload("res://assets/art/signal_fragment.svg")
 }
 

@@ -31,7 +31,7 @@ const BUBBLE_TEXTURES := [
 ]
 const ESCAPE_POD_ART := preload("res://assets/art/escape_pod.svg")
 
-const WORLD_WIDTH := 3000.0
+const WORLD_WIDTH := 4400.0
 const WATER_TOP := -380.0
 const DEPTH_TINT := Color(0.46, 0.67, 0.91, 0.84)
 
@@ -45,6 +45,7 @@ func _ready() -> void:
 	var backdrop := Sprite2D.new()
 	backdrop.texture = BACKDROP
 	backdrop.position = Vector2(0, WATER_TOP + 1480.0)
+	backdrop.scale.x = 1.48
 	backdrop.z_index = -30
 	backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(backdrop)

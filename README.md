@@ -1,6 +1,6 @@
 # The Quiet Trench
 
-A free, single-player 2D underwater survival and mystery game made with Godot 4. Explore a colorful alien ocean, salvage materials, craft a pressure upgrade, and follow an old signal into the trench.
+A free, single-player 2D underwater survival and mystery game made with Godot 4. Explore a colorful alien ocean, sample strange life, research technologies, and follow an old signal into the trench.
 
 ## Run
 
@@ -18,15 +18,21 @@ In VS Code, open **Terminal → Run Task...** and select **Godot: Launch game** 
 
 ## Controls
 
-- **WASD** or **arrow keys** — move
-- **E** — collect nearby salvage or the signal fragment
-- **F** — craft the pressure weave at the surface pod
+- **WASD** or **arrow keys** — swim
+- **Shift** — boost while wearing Current-rider fins
+- **E** — collect salvage or sample nearby alien life
+- **F** — open or close the field technology bench
+- **Mouse** — aim the analyzer beam
+- **Hold left mouse button** — scan an unstudied creature or plant in the beam
+- **Right mouse button** — fire the Dreamspore dart at a hostile target in range
 
-Return to the pod near the surface to replenish oxygen. The first dive is pressure-limited. Gather three Driftmetal and one Lumen kelp to craft the pressure weave, then descend after the signal.
+Return to the escape pod near the surface to refill oxygen and restore health. Begin by collecting three Driftmetal and one Lumen kelp to fabricate the known Pressure-weave suit. Scan each alien species to reveal its linked technology; sampled fauna and flora provide the recipe materials. The bench lists all technologies and shows which are unknown, short on materials, ready, or already built.
+
+Progression includes pressure protection, a larger scrubber tank, speed fins, a lamp, a visible pocket submersible, a tranquilizer, and consumable repair gel. Each upgrade opens up more of the trench and the story behind the signal.
 
 ## Saves
 
-Progress is saved locally in Godot's `user://` data directory as `quiet_trench_save.json`. Save files are not part of the project folder.
+Inventory, scans, sampled specimens, crafted technologies, and story progress are saved locally in Godot's `user://` data directory as `quiet_trench_save.json`. Existing version 1 saves are migrated automatically. Save files are not part of the project folder.
 
 ## Headless checks
 
